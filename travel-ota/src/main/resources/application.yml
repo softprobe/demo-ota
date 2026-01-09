@@ -1,0 +1,48 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  address: 0.0.0.0
+
+spring:
+  application:
+    name: travel-ota
+  
+  # static resources
+  web:
+    resources:
+      static-locations: classpath:/static/
+  
+  # Jackson settings
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: NON_NULL
+
+# logging
+logging:
+  level:
+    org.example: DEBUG
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# custom settings
+app:
+  # mock data
+  mock:
+    # flight search delay (ms)
+    search-delay: 500
+    # booking delay (ms)
+    booking-delay: 1000
+    # payment delay (ms)
+    payment-delay: 1500
+  
+  # airline API config
+  airline:
+    # airline service base URL
+    base-url: ${AIRLINE_BASE_URL:http://localhost:8081/airline-api/v1}
+    # connection timeout (ms)
+    connection-timeout: 5000
+    # read timeout (ms)
+    read-timeout: 10000

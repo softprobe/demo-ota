@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Search - Travel Booking</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .glass-effect {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .search-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen gradient-bg">
+<!-- Navigation -->
+<nav class="glass-effect text-white p-4">
+    <div class="container mx-auto flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <i class="fas fa-plane text-2xl"></i>
+            <h1 class="text-2xl font-bold">Travel Booking</h1>
+        </div>
+        <div class="space-x-4">
+            <a href="/" class="hover:text-blue-200 transition-colors">Home</a>
+            <a href="#" class="hover:text-blue-200 transition-colors">My Trips</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Main content -->
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h2 class="text-4xl font-bold text-white mb-4">Plan Your Next Journey</h2>
+            <p class="text-xl text-white opacity-90">Search and book great fares worldwide</p>
+        </div>
+
+        <!-- Search form -->
+        <div class="search-card p-8">
+            <form th:action="@{/flights}" method="post" th:object="${searchRequest}">
+                <!-- Trip type -->
+                <div class="mb-6">
+                    <div class="flex space-x-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="tripType" value="ONE_WAY" checked class="mr-2">
+                            <span class="text-gray-700">One-way</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="tripType" value="ROUND_TRIP" class="mr-2">
+                            <span class="text-gray-700">Round-trip</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Origin and destination -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-plane-departure mr-2"></i>From
+                        </label>
+                        <select th:field="*{departureCity}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">Select departure city</option>
+                            <option th:each="city : ${departureCities}"
+                                    th:value="${city}" th:text="${city}"></option>
+                        </select>
+                        <div th:if="${#fields.hasErrors('departureCity')}"
+                             class="text-red-500 text-sm mt-1" th:errors="*{departureCity}"></div>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-plane-arrival mr-2"></i>To
+                        </label>
+                        <select th:field="*{arrivalCity}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">Select arrival city</option>
+                            <option th:each="city : ${arrivalCities}"
+                                    th:value="${city}" th:text="${city}"></option>
+                        </select>
+                        <div th:if="${#fields.hasErrors('arrivalCity')}"
+                             class="text-red-500 text-sm mt-1" th:errors="*{arrivalCity}"></div>
+                    </div>
+                </div>
+
+                <!-- Departure date -->
+                <div class="mb-6">
+                    <label class="block text-gray-700 font-medium mb-2">
+                        <i class="fas fa-calendar mr-2"></i>Departure date
+                    </label>
+                    <input type="datetime-local" th:field="*{departureDate}"
+                           class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <div th:if="${#fields.hasErrors('departureDate')}"
+                         class="text-red-500 text-sm mt-1" th:errors="*{departureDate}"></div>
+                </div>
+
+                <!-- Passengers and cabin -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-users mr-2"></i>Passengers
+                        </label>
+                        <input type="number" th:field="*{passengerCount}" min="1" max="9" value="1"
+                               class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <div th:if="${#fields.hasErrors('passengerCount')}"
+                             class="text-red-500 text-sm mt-1" th:errors="*{passengerCount}"></div>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-user mr-2"></i>Passenger type
+                        </label>
+                        <select th:field="*{passengerType}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option th:each="type : ${passengerTypes}"
+                                    th:value="${type}" th:text="${type.displayName}"></option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-chair mr-2"></i>Cabin class
+                        </label>
+                        <select th:field="*{cabinClass}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option th:each="cabin : ${cabinClasses}"
+                                    th:value="${cabin}" th:text="${cabin.displayName}"></option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Search button -->
+                <div class="text-center">
+                    <button type="submit"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg transform transition-all duration-200 hover:scale-105 shadow-lg">
+                        <i class="fas fa-search mr-2"></i>Search flights
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Highlights -->
+        <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="glass-effect text-white p-6 rounded-lg text-center">
+                <i class="fas fa-money-bill-wave text-3xl mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Best Price Guarantee</h3>
+                <p>We offer competitive fares across major markets</p>
+            </div>
+            <div class="glass-effect text-white p-6 rounded-lg text-center">
+                <i class="fas fa-clock text-3xl mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">24/7 Support</h3>
+                <p>Round-the-clock help whenever you need it</p>
+            </div>
+            <div class="glass-effect text-white p-6 rounded-lg text-center">
+                <i class="fas fa-shield-alt text-3xl mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Secure Booking</h3>
+                <p>Your personal details and payments are protected</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Default date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateInput = document.querySelector('input[type="datetime-local"]');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = tomorrow.toISOString().slice(0, 16);
+    }
+</script>
+</body>
+</html>

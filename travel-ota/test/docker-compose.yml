@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Application service (dict-app)
+  dict-app:
+    image: travel-ota
+    networks:
+      - service-network
+    environment:
+      # Explicit proxy configuration
+      - HTTP_PROXY=http://envoy-dict-app:15001
+      - HTTPS_PROXY=http://envoy-dict-app:15001
+      - http_proxy=http://envoy-dict-app:15001
+      - https_proxy=http://envoy-dict-app:15001
+    ports:
+      - "8080:8080"
+    # If you want inbound traffic to pass through Envoy, call it explicitly
+    # Example: curl http://envoy-dict-app:15006/your-endpoint
+    # Add airline API service
+  airline-api:
+    image: sp-airline  # Replace with the actual image
+    networks:
+      - service-network
+    ports:
+      - "8081:8081"
+
+
+  # Envoy sidecar for dict-app
+  envoy-dict-app:
+    image: gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/sp-envoy:v1.1.7
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
+    networks:
+      - service-network
+    ports:
+      - "15001:15001"  # Outbound traffic
+      - "15006:15006"  # Inbound traffic
+
+
+networks:
+  service-network:
+    driver: bridge
