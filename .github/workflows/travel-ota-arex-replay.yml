@@ -81,6 +81,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cloudflared
 
+      - name: Download SoftProbe agent
+        run: |
+          curl -fL -o travel-ota/sp-agent.jar https://storage.googleapis.com/softprobe-published-files/agent/longteng/v3.9.29-longteng/sp-agent-v3.9.29-longteng-jdk11.jar
+
       - name: Start sp-airline
         run: |
           chmod +x sp-airline/run.sh
@@ -104,9 +108,8 @@ jobs:
 
       - name: Start travel-ota
         run: |
-          chmod +x travel-ota/run.sh
           mkdir -p .artifacts
-          nohup bash -lc 'cd travel-ota && SERVER_PORT="${TRAVEL_OTA_PORT}" AIRLINE_BASE_URL="${SP_AIRLINE_URL}" ./run.sh' > .artifacts/travel-ota.stdout.log 2>&1 &
+          nohup bash -lc 'cd travel-ota && java -javaagent:sp-agent.jar -Dsp.service.name=504c5a6db168cdc4 -Dsp.storage.service.host=https://storage-onpremise-gcp.softprobe.ai -Dserver.port='"${TRAVEL_OTA_PORT}"' -DAIRLINE_BASE_URL='"${SP_AIRLINE_URL}"' -jar target/travel-ota-1.0-SNAPSHOT.jar' > .artifacts/travel-ota.stdout.log 2>&1 &
           echo $! > .artifacts/travel-ota.pid
 
       - name: Wait for travel-ota to be ready
@@ -119,6 +122,10 @@ jobs:
             sleep 2
           done
           echo "travel-ota did not become ready in time"
+          echo "--- java processes ---"
+          ps -ef | grep java | grep -v grep || true
+          echo "--- port listeners ---"
+          ss -ltnp || true
           echo "--- travel-ota stdout ---"
           tail -n 200 .artifacts/travel-ota.stdout.log || true
           echo "--- travel-ota logs ---"
