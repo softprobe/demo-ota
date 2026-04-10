@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.RestClientException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -20,6 +21,7 @@ import java.util.*;
 @Service
 public class FlightService {
     private static final Logger logger = LoggerFactory.getLogger(FlightService.class);
+    private static final BigDecimal SEARCH_PRICE_MARGIN = new BigDecimal("1.15");
 
     private final Map<String, BookingResponse> bookings = new HashMap<>();
     
@@ -60,6 +62,7 @@ public class FlightService {
             
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 FlightSearchResponse flightResponse = response.getBody();
+                applySearchPriceMargin(flightResponse);
                 return flightResponse;
             } else {
                 logger.error("Airline API returned non-success status: {}", response.getStatusCode());
@@ -74,6 +77,51 @@ public class FlightService {
             logger.error("Unexpected error during flight search", e);
             throw new RuntimeException("Unexpected error during flight search: " + e.getMessage());
         }
+    }
+
+    private void applySearchPriceMargin(FlightSearchResponse flightResponse) {
+        if (flightResponse == null) {
+            return;
+        }
+
+        if (flightResponse.getFlights() != null) {
+            for (FlightSearchResponse.FlightOption flight : flightResponse.getFlights()) {
+                if (flight == null || flight.getFareOptions() == null) {
+                    continue;
+                }
+
+                for (FlightSearchResponse.FareOption fareOption : flight.getFareOptions()) {
+                    if (fareOption == null) {
+                        continue;
+                    }
+                    fareOption.setPrice(applyMargin(fareOption.getPrice()));
+                }
+            }
+        }
+
+        FlightSearchResponse.SearchSummary summary = flightResponse.getSummary();
+        if (summary == null) {
+            return;
+        }
+
+        summary.setLowestPrice(applyMargin(summary.getLowestPrice()));
+        summary.setHighestPrice(applyMargin(summary.getHighestPrice()));
+
+        if (summary.getDatePrices() != null) {
+            for (FlightSearchResponse.DatePrice datePrice : summary.getDatePrices()) {
+                if (datePrice == null) {
+                    continue;
+                }
+                datePrice.setMinPrice(applyMargin(datePrice.getMinPrice()));
+            }
+        }
+    }
+
+    private BigDecimal applyMargin(BigDecimal originalPrice) {
+        if (originalPrice == null) {
+            return null;
+        }
+        return originalPrice.multiply(SEARCH_PRICE_MARGIN).setScale(2, RoundingMode.HALF_UP);
     }
 
     public BookingResponse bookFlight(BookingRequest request) {
