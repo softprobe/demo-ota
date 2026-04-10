@@ -32,7 +32,7 @@ jobs:
     env:
       AREX_WEB_API_URL: https://api-onpremise-gcp.softprobe.ai
       AREX_SCHEDULE_URL: https://schedule-onpremise-gcp.softprobe.ai
-      AREX_WAIT_FOR_URL: http://127.0.0.1:19380/
+      AREX_WAIT_FOR_URL: http://127.0.0.1:8080/
       AREX_APP_ID: 504c5a6db168cdc4
       AREX_SOURCE_ENV: pro
       AREX_ENABLE_MOCK: 'true'
