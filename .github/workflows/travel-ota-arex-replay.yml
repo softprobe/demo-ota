@@ -32,10 +32,12 @@ jobs:
     env:
       AREX_WEB_API_URL: https://api-onpremise-gcp.softprobe.ai
       AREX_SCHEDULE_URL: https://schedule-onpremise-gcp.softprobe.ai
-      AREX_WAIT_FOR_URL: http://127.0.0.1:8080/
       AREX_APP_ID: 504c5a6db168cdc4
       AREX_SOURCE_ENV: pro
       AREX_ENABLE_MOCK: 'true'
+      TRAVEL_OTA_PORT: '19380'
+      TRAVEL_OTA_LOCAL_URL: http://127.0.0.1:19380/
+      SP_AIRLINE_URL: http://127.0.0.1:8081/airline-api/v1
 
     steps:
       - name: Checkout
@@ -79,17 +81,38 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cloudflared
 
+      - name: Start sp-airline
+        run: |
+          chmod +x sp-airline/run.sh
+          mkdir -p .artifacts
+          nohup bash -lc 'cd sp-airline && ./run.sh' > .artifacts/sp-airline.stdout.log 2>&1 &
+          echo $! > .artifacts/sp-airline.pid
+
+      - name: Wait for sp-airline to be ready
+        run: |
+          for i in $(seq 1 120); do
+            if curl -fsS "${SP_AIRLINE_URL}/health" > /dev/null; then
+              echo "sp-airline is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "sp-airline did not become ready in time"
+          echo "--- sp-airline stdout ---"
+          tail -n 200 .artifacts/sp-airline.stdout.log || true
+          exit 1
+
       - name: Start travel-ota
         run: |
           chmod +x travel-ota/run.sh
           mkdir -p .artifacts
-          nohup bash -lc 'cd travel-ota && ./run.sh' > .artifacts/travel-ota.stdout.log 2>&1 &
+          nohup bash -lc 'cd travel-ota && SERVER_PORT="${TRAVEL_OTA_PORT}" AIRLINE_BASE_URL="${SP_AIRLINE_URL}" ./run.sh' > .artifacts/travel-ota.stdout.log 2>&1 &
           echo $! > .artifacts/travel-ota.pid
 
       - name: Wait for travel-ota to be ready
         run: |
           for i in $(seq 1 120); do
-            if curl -fsS "${AREX_WAIT_FOR_URL}" > /dev/null; then
+            if curl -fsS "${TRAVEL_OTA_LOCAL_URL}" > /dev/null; then
               echo "travel-ota is ready"
               exit 0
             fi
@@ -112,6 +135,22 @@ jobs:
           echo "--- cloudflared startup ---"
           tail -n 100 .artifacts/cloudflared.log || true
 
+      - name: Wait for public tunnel URL
+        env:
+          AREX_TARGET_ENV: ${{ vars.AREX_TARGET_ENV || secrets.AREX_TARGET_ENV }}
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "${AREX_TARGET_ENV}" > /dev/null; then
+              echo "public tunnel is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "public tunnel did not become ready in time"
+          echo "--- cloudflared log ---"
+          tail -n 200 .artifacts/cloudflared.log || true
+          exit 1
+
       - name: Replay captured sessions with AREX
         env:
           AREX_ACCESS_TOKEN: ${{ secrets.AREX_ACCESS_TOKEN }}
@@ -128,7 +167,7 @@ jobs:
             --all-sessions \
             --begin-time "${BEGIN_TIME}" \
             --end-time "${END_TIME}" \
-            --wait-for-url "${AREX_WAIT_FOR_URL}" \
+            --wait-for-url "${AREX_TARGET_ENV}" \
             --access-token "${AREX_ACCESS_TOKEN}" \
             --report-json .artifacts/arex-replay-summary.json
 
@@ -147,6 +186,14 @@ jobs:
         run: |
           if [ -f .artifacts/travel-ota.pid ]; then
             PID="$(cat .artifacts/travel-ota.pid)"
+            if kill -0 "${PID}" 2>/dev/null; then
+              kill "${PID}" || true
+              sleep 5
+              kill -9 "${PID}" 2>/dev/null || true
+            fi
+          fi
+          if [ -f .artifacts/sp-airline.pid ]; then
+            PID="$(cat .artifacts/sp-airline.pid)"
             if kill -0 "${PID}" 2>/dev/null; then
               kill "${PID}" || true
               sleep 5
