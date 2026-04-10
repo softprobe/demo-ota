@@ -32,7 +32,6 @@ jobs:
     env:
       AREX_WEB_API_URL: https://api-onpremise-gcp.softprobe.ai
       AREX_SCHEDULE_URL: https://schedule-onpremise-gcp.softprobe.ai
-      AREX_TARGET_ENV: http://127.0.0.1:19380
       AREX_WAIT_FOR_URL: http://127.0.0.1:19380/
       AREX_APP_ID: 504c5a6db168cdc4
       AREX_SOURCE_ENV: pro
@@ -60,9 +59,25 @@ jobs:
             echo "AREX_ACCESS_TOKEN secret is required."
             exit 1
           }
+          test -n "${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}" || {
+            echo "CLOUDFLARE_TUNNEL_TOKEN secret is required."
+            exit 1
+          }
+          test -n "${{ vars.AREX_TARGET_ENV || secrets.AREX_TARGET_ENV }}" || {
+            echo "AREX_TARGET_ENV repo variable or secret is required."
+            exit 1
+          }
 
       - name: Build Maven modules
         run: mvn -B -DskipTests install
+
+      - name: Install cloudflared
+        run: |
+          sudo mkdir -p --mode=0755 /usr/share/keyrings
+          curl -fsSL https://pkg.cloudflare.com/cloudflare-public-v2.gpg | sudo tee /usr/share/keyrings/cloudflare-public-v2.gpg >/dev/null
+          echo 'deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+          sudo apt-get update
+          sudo apt-get install -y cloudflared
 
       - name: Start travel-ota
         run: |
@@ -81,11 +96,26 @@ jobs:
             sleep 2
           done
           echo "travel-ota did not become ready in time"
+          echo "--- travel-ota stdout ---"
+          tail -n 200 .artifacts/travel-ota.stdout.log || true
+          echo "--- travel-ota logs ---"
+          find travel-ota/logs -maxdepth 1 -type f -print -exec tail -n 100 {} \; || true
           exit 1
+
+      - name: Start Cloudflare tunnel
+        env:
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+        run: |
+          nohup cloudflared tunnel run --token "${CLOUDFLARE_TUNNEL_TOKEN}" > .artifacts/cloudflared.log 2>&1 &
+          echo $! > .artifacts/cloudflared.pid
+          sleep 10
+          echo "--- cloudflared startup ---"
+          tail -n 100 .artifacts/cloudflared.log || true
 
       - name: Replay captured sessions with AREX
         env:
           AREX_ACCESS_TOKEN: ${{ secrets.AREX_ACCESS_TOKEN }}
+          AREX_TARGET_ENV: ${{ vars.AREX_TARGET_ENV || secrets.AREX_TARGET_ENV }}
         run: |
           BEGIN_TIME="$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)"
           END_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -117,6 +147,14 @@ jobs:
         run: |
           if [ -f .artifacts/travel-ota.pid ]; then
             PID="$(cat .artifacts/travel-ota.pid)"
+            if kill -0 "${PID}" 2>/dev/null; then
+              kill "${PID}" || true
+              sleep 5
+              kill -9 "${PID}" 2>/dev/null || true
+            fi
+          fi
+          if [ -f .artifacts/cloudflared.pid ]; then
+            PID="$(cat .artifacts/cloudflared.pid)"
             if kill -0 "${PID}" 2>/dev/null; then
               kill "${PID}" || true
               sleep 5
