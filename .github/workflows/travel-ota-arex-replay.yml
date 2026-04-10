@@ -158,7 +158,7 @@ jobs:
           tail -n 200 .artifacts/cloudflared.log || true
           exit 1
 
-      - name: Replay captured sessions with AREX
+      - name: Run Softprobe tests
         env:
           AREX_ACCESS_TOKEN: ${{ secrets.AREX_ACCESS_TOKEN }}
           AREX_TARGET_ENV: ${{ vars.AREX_TARGET_ENV || secrets.AREX_TARGET_ENV }}
