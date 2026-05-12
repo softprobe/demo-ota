@@ -109,7 +109,7 @@ jobs:
       - name: Start travel-ota
         run: |
           mkdir -p .artifacts
-          nohup bash -lc 'cd travel-ota && java -javaagent:sp-agent.jar -Dsp.service.name=504c5a6db168cdc4 -Dsp.storage.service.host=https://storage-onpremise-gcp.softprobe.ai -Dserver.port='"${TRAVEL_OTA_PORT}"' -DAIRLINE_BASE_URL='"${SP_AIRLINE_URL}"' -jar target/travel-ota-1.0-SNAPSHOT.jar' > .artifacts/travel-ota.stdout.log 2>&1 &
+          nohup bash -lc 'cd travel-ota && java -javaagent:sp-agent.jar -Dsp.app.id=504c5a6db168cdc4 -Dsp.storage.service.host=https://storage-onpremise-gcp.softprobe.ai -Dserver.port='"${TRAVEL_OTA_PORT}"' -DAIRLINE_BASE_URL='"${SP_AIRLINE_URL}"' -jar target/travel-ota-1.0-SNAPSHOT.jar' > .artifacts/travel-ota.stdout.log 2>&1 &
           echo $! > .artifacts/travel-ota.pid
 
       - name: Wait for travel-ota to be ready
