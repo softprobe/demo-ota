@@ -22,7 +22,7 @@ This repo contains a minimal, clean demo OTA system with three components:
 From the repo root:
 
 ```bash
-mvn -DskipTests package
+mvn package
 ```
 
 ## Run
