@@ -13,6 +13,8 @@ import java.util.HashMap;
 import java.util.Map;
 import jakarta.servlet.http.HttpServletRequest;
 
+import org.example.service.AuthenticateService;
+
 @RestController
 @RequestMapping("/api/flights")
 @CrossOrigin(origins = "*")
@@ -21,6 +23,9 @@ public class FlightController {
 
     @Autowired
     private FlightService flightService;
+
+    @Autowired
+    private AuthenticateService authenticateService;
 
     @PostMapping("/search")
     public ResponseEntity<Object> searchFlights(@Valid @RequestBody FlightSearchRequest request, HttpServletRequest httpRequest) {
@@ -31,6 +36,10 @@ public class FlightController {
                 String headerValue = httpRequest.getHeader(headerName);
                 logger.info("{}: {}", headerName, headerValue);
             });
+
+            // Call internal AuthenticateService to demonstrate dynamic class recording/mocking
+            boolean authenticated = authenticateService.authenticate("user_e2e", "pass_secret");
+            logger.info("Internal Authentication Service result: {}", authenticated);
 
             FlightSearchResponse response = flightService.searchFlights(request);
             return ResponseEntity.ok(response);
