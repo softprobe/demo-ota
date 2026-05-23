@@ -2,7 +2,7 @@ FROM docker.m.daocloud.io/library/eclipse-temurin:21-jre-jammy
 
 COPY target/*.jar app.jar
 
-# Download the SoftProbe Java Agent
+# Download the Softprobe Java Agent
 RUN curl -LO https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
 RUN mv opentelemetry-javaagent.jar otel.jar
 

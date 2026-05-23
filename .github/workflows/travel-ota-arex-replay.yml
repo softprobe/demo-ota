@@ -81,7 +81,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cloudflared
 
-      - name: Download SoftProbe agent
+      - name: Download Softprobe agent
         run: |
           curl -fL -o travel-ota/sp-agent.jar https://storage.googleapis.com/softprobe-published-files/agent/longteng/v3.9.29-longteng/sp-agent-v3.9.29-longteng-jdk11.jar
 
