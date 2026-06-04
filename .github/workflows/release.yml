@@ -1,0 +1,41 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build JARs
+        run: mvn -B -DskipTests package
+
+      - name: Stage release artifacts
+        run: |
+          cp sp-airline/target/sp-airline-1.0.0.jar sp-airline.jar
+          cp travel-ota/target/travel-ota-1.0-SNAPSHOT.jar travel-ota.jar
+          sha256sum sp-airline.jar travel-ota.jar
+
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sp-airline.jar
+            travel-ota.jar
+          generate_release_notes: true

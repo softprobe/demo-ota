@@ -43,6 +43,22 @@ cd travel-ota
 
 Then open http://localhost:8080/
 
+## Releases (for `sp demo start`)
+
+Pre-built JARs are published on [GitHub Releases](https://github.com/softprobe/demo-ota/releases):
+
+- `sp-airline.jar` — fake airline service
+- `travel-ota.jar` — instrumented OTA app + static UI
+
+To cut a release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The `release` workflow builds both modules and attaches the JARs to the release.
+
 ## Notes
 
 - The web UI is served from travel-ota at `/` and uses the OTA API under `/api`.
