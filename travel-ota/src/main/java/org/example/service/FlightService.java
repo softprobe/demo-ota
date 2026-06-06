@@ -2,6 +2,7 @@ package org.example.service;
 
 import com.airline.common.model.*;
 import org.example.config.AirlineApiConfig;
+import org.example.config.RegionalTaxService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,9 @@ public class FlightService {
     
     @Autowired
     private AirlineApiConfig airlineApiConfig;
+
+    @Autowired
+    private RegionalTaxService regionalTaxService;
     
     // Airline API endpoints
     private static final String FLIGHT_SEARCH_ENDPOINT = "/flights/search";
@@ -60,6 +64,7 @@ public class FlightService {
             
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 FlightSearchResponse flightResponse = response.getBody();
+                regionalTaxService.applyToSearchResponse(flightResponse);
                 return flightResponse;
             } else {
                 logger.error("Airline API returned non-success status: {}", response.getStatusCode());

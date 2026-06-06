@@ -27,6 +27,13 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
+# RegionTenantCodeConfig demo (@Value setter → static field → inner enum snapshot).
+# Change tenant.sales-region (MEA=8% tax, EU=20% tax) at replay time to expose stale static/enum bugs.
+tenant:
+  MEA: tenant-mea-local
+  EU: tenant-eu-local
+  sales-region: MEA
+
 # custom settings
 app:
   # mock data

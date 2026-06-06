@@ -45,6 +45,12 @@ A demo flight booking system built with JDK 21 and Spring Boot 3.x. It includes 
    - Pay by PNR
    - Returns ticket number on success
 
+## Spring config replay demo (internal only)
+
+`RegionTenantCodeConfig` uses `@Value` on setters → static fields → inner enum constants. Search applies **regional tax** to airline fares in `FlightService` (MEA 8%, EU 20% via `tenant.sales-region`); the public search API shape is unchanged.
+
+At replay, inject a different `tenant.sales-region` (e.g. `EU` vs recorded `MEA`) so tax — and fare prices — differ; replay diff fails if static config is not refreshed. Test: `mvn test -Dtest=RegionTenantCodeConfigTest`.
+
 ## Tech stack
 
 ### Backend
