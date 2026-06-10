@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>机票搜索 - 飞行预订系统</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .glass-effect {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .search-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen gradient-bg">
+<!-- 导航栏 -->
+<nav class="glass-effect text-white p-4">
+    <div class="container mx-auto flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <i class="fas fa-plane text-2xl"></i>
+            <h1 class="text-2xl font-bold">飞行预订系统</h1>
+        </div>
+        <div class="space-x-4">
+            <a href="/" class="hover:text-blue-200 transition-colors">首页</a>
+            <a href="#" class="hover:text-blue-200 transition-colors">我的订单</a>
+        </div>
+    </div>
+</nav>
+
+<!-- 主要内容 -->
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- 标题 -->
+        <div class="text-center mb-8">
+            <h2 class="text-4xl font-bold text-white mb-4">发现您的下一次旅程</h2>
+            <p class="text-xl text-white opacity-90">搜索并预订全球最优惠的机票</p>
+        </div>
+
+        <!-- 搜索表单 -->
+        <div class="search-card p-8">
+            <form th:action="@{/flights}" method="post" th:object="${searchRequest}">
+                <!-- 行程类型 -->
+                <div class="mb-6">
+                    <div class="flex space-x-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="tripType" value="ONE_WAY" checked class="mr-2">
+                            <span class="text-gray-700">单程</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="tripType" value="ROUND_TRIP" class="mr-2">
+                            <span class="text-gray-700">往返</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 出发地和目的地 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-plane-departure mr-2"></i>出发城市
+                        </label>
+                        <select th:field="*{departureCity}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">请选择出发城市</option>
+                            <option th:each="city : ${departureCities}"
+                                    th:value="${city}" th:text="${city}"></option>
+                        </select>
+                        <div th:if="${#fields.hasErrors('departureCity')}"
+                             class="text-red-500 text-sm mt-1" th:errors="*{departureCity}"></div>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-plane-arrival mr-2"></i>到达城市
+                        </label>
+                        <select th:field="*{arrivalCity}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="">请选择到达城市</option>
+                            <option th:each="city : ${arrivalCities}"
+                                    th:value="${city}" th:text="${city}"></option>
+                        </select>
+                        <div th:if="${#fields.hasErrors('arrivalCity')}"
+                             class="text-red-500 text-sm mt-1" th:errors="*{arrivalCity}"></div>
+                    </div>
+                </div>
+
+                <!-- 出发日期 -->
+                <div class="mb-6">
+                    <label class="block text-gray-700 font-medium mb-2">
+                        <i class="fas fa-calendar mr-2"></i>出发日期
+                    </label>
+                    <input type="datetime-local" th:field="*{departureDate}"
+                           class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <div th:if="${#fields.hasErrors('departureDate')}"
+                         class="text-red-500 text-sm mt-1" th:errors="*{departureDate}"></div>
+                </div>
+
+                <!-- 乘客信息和舱等 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-users mr-2"></i>乘客人数
+                        </label>
+                        <input type="number" th:field="*{passengerCount}" min="1" max="9" value="1"
+                               class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <div th:if="${#fields.hasErrors('passengerCount')}"
+                             class="text-red-500 text-sm mt-1" th:errors="*{passengerCount}"></div>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-user mr-2"></i>乘客类型
+                        </label>
+                        <select th:field="*{passengerType}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option th:each="type : ${passengerTypes}"
+                                    th:value="${type}" th:text="${type.displayName}"></option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">
+                            <i class="fas fa-chair mr-2"></i>舱等
+                        </label>
+                        <select th:field="*{cabinClass}"
+                                class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option th:each="cabin : ${cabinClasses}"
+                                    th:value="${cabin}" th:text="${cabin.displayName}"></option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 搜索按钮 -->
+                <div class="text-center">
+                    <button type="submit"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg transform transition-all duration-200 hover:scale-105 shadow-lg">
+                        <i class="fas fa-search mr-2"></i>搜索航班
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 特色功能 -->
+        <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="glass-effect text-white p-6 rounded-lg text-center">
+                <i class="fas fa-money-bill-wave text-3xl mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">最低价保证</h3>
+                <p>我们提供市场上最优惠的价格</p>
+            </div>
+            <div class="glass-effect text-white p-6 rounded-lg text-center">
+                <i class="fas fa-clock text-3xl mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">24小时服务</h3>
+                <p>全天候客服支持，随时为您服务</p>
+            </div>
+            <div class="glass-effect text-white p-6 rounded-lg text-center">
+                <i class="fas fa-shield-alt text-3xl mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">安全保障</h3>
+                <p>您的个人信息和支付安全得到保障</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 设置默认日期为明天
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateInput = document.querySelector('input[type="datetime-local"]');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = tomorrow.toISOString().slice(0, 16);
+    }
+</script>
+</body>
+</html>
