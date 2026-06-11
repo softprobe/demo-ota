@@ -44,6 +44,11 @@ public class FlightService {
     
     public FlightSearchResponse searchFlights(FlightSearchRequest request) {
         try {
+            logger.warn(
+                    "searching flights: departure {}, arrival {}, date {}",
+                    request.getFromCity(),
+                    request.getToCity(),
+                    request.getDepartureDate());
             // Call external airline API
             String url = airlineApiConfig.getBaseUrl() + FLIGHT_SEARCH_ENDPOINT;
             
@@ -83,6 +88,11 @@ public class FlightService {
 
     public BookingResponse bookFlight(BookingRequest request) {
         try {
+            logger.warn(
+                    "booking flight: flightId {}, fareId {}, passengers {}",
+                    request.getFlightId(),
+                    request.getFareId(),
+                    request.getPassengers().size());
             // First, ensure the flight exists in sp-airline by calling searchFlights
             // This populates the flights map in sp-airline service
             FlightSearchRequest searchRequest = new FlightSearchRequest();
@@ -144,6 +154,11 @@ public class FlightService {
 
     public PaymentResponse payAndIssue(PaymentRequest request) {
         try {
+            logger.warn(
+                    "processing payment: bookingId {}, amount {} {}",
+                    request.getBookingId(),
+                    request.getAmount(),
+                    request.getCurrency());
             // Call external airline API for payment processing
             String url = airlineApiConfig.getBaseUrl() + PAYMENT_PROCESS_ENDPOINT;
             
