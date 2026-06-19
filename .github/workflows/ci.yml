@@ -10,12 +10,12 @@ on:
     paths:
       - 'travel-ota/**'
       - 'pom.xml'
-      - '.github/workflows/travel-ota-arex-replay.yml'
+      - '.github/workflows/ci.yml'
   pull_request:
     paths:
       - 'travel-ota/**'
       - 'pom.xml'
-      - '.github/workflows/travel-ota-arex-replay.yml'
+      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read
