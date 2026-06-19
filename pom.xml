@@ -12,8 +12,6 @@
     <description>Demo OTA app with web UI, OTA layer, and fake airline service</description>
 
     <modules>
-        <module>airline-common</module>
-        <module>sp-airline</module>
         <module>travel-ota</module>
     </modules>
 </project>

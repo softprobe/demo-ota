@@ -55,13 +55,6 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
-
-        <!-- Shared airline models -->
-        <dependency>
-            <groupId>com.airline</groupId>
-            <artifactId>airline-common</artifactId>
-            <version>1.0.0</version>
-        </dependency>
     </dependencies>
 
     <build>

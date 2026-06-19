@@ -2,7 +2,7 @@ package org.example.controller;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.airline.common.model.*;
+import org.example.model.*;
 import org.example.service.FlightService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

@@ -1,65 +1,25 @@
-# Demo Airline OTA
+# demo-ota
 
-This repo contains a minimal, clean demo OTA system with three components:
+Instrumented **travel-ota** demo app for Softprobe record/replay E2E.
 
-1) Web app (static UI bundled in the OTA service)
-2) OTA layer (Spring Boot service)
-3) Fake airline service (Spring Boot service)
+Upstream airline mock (NDC 21.3 JSON): **[sp-airline-ndc](https://github.com/softprobe/sp-airline-ndc)** — hosted at [spair.softprobe.ai](https://spair.softprobe.ai) ([API docs](https://spair.softprobe.ai/docs)).
 
-## Project layout
+## Modules
 
-- airline-common: Shared models and DTOs
-- travel-ota: OTA service + static web UI (port 8080)
-- sp-airline: Fake airline service (port 8081)
-
-## Prerequisites
-
-- Java 21
-- Maven 3.9+
+| Module | Role |
+|--------|------|
+| `travel-ota` | Spring Boot OTA layer (Java agent instrumented) |
 
 ## Build
 
-From the repo root:
-
 ```bash
-mvn package
+mvn -B -DskipTests package
 ```
 
-## Run
+JAR: `travel-ota/target/travel-ota-1.0-SNAPSHOT.jar`
 
-Terminal 1:
-
-```bash
-cd sp-airline
-./run.sh
-```
-
-Terminal 2:
+## Configuration
 
 ```bash
-cd travel-ota
-./run.sh
+export AIRLINE_NDC_BASE_URL=https://spair.softprobe.ai/ndc/v21.3   # default
 ```
-
-Then open http://localhost:8080/
-
-## Releases (for `sp demo start`)
-
-Pre-built JARs are published on [GitHub Releases](https://github.com/softprobe/demo-ota/releases):
-
-- `sp-airline.jar` — fake airline service
-- `travel-ota.jar` — instrumented OTA app + static UI
-
-To cut a release:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The `release` workflow builds both modules and attaches the JARs to the release.
-
-## Notes
-
-- The web UI is served from travel-ota at `/` and uses the OTA API under `/api`.
-- The OTA service calls the fake airline service on port 8081.

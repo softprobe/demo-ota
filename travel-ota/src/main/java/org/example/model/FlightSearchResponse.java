@@ -27,7 +27,7 @@ public class FlightSearchResponse {
         private List<FareOption> fareOptions;
         private boolean hasWifi;
         private boolean hasPowerOutlet;
-        private String co2Emission; // Emissions info
+        private String co2Emission; // Environmental information
     }
     
     @Data
@@ -69,4 +69,4 @@ public class FlightSearchResponse {
         private BigDecimal minPrice;
         private boolean isSelected;
     }
-} 
+}

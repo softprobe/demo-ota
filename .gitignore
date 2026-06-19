@@ -13,3 +13,5 @@
 
 # Node
 **/node_modules/
+.spcode/
+.opencode/

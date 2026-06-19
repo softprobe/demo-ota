@@ -30,8 +30,12 @@ document.addEventListener('DOMContentLoaded', function() {
 // Render date navigation
 function renderDateNavigation() {
     const dateNav = document.getElementById('dateNavigation');
-    const datePrices = searchResults.summary.datePrices;
-    
+    const datePrices = searchResults.summary?.datePrices || [];
+    if (!datePrices.length) {
+        dateNav.innerHTML = '';
+        return;
+    }
+
     dateNav.innerHTML = datePrices.map((datePrice, index) => `
         <div class="col date-item ${datePrice.selected ? 'selected' : ''}" onclick="selectDate(${index})">
             <div class="fw-bold">${datePrice.date}</div>

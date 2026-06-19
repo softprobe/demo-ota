@@ -47,8 +47,8 @@ app:
   
   # airline API config
   airline:
-    # airline service base URL
-    base-url: ${AIRLINE_BASE_URL:http://localhost:8081/airline-api/v1}
+    # NDC mock airline worker (https://spair.softprobe.ai)
+    base-url: ${AIRLINE_NDC_BASE_URL:${AIRLINE_BASE_URL:https://spair.softprobe.ai/ndc/v21.3}}
     # connection timeout (ms)
     connection-timeout: 5000
     # read timeout (ms)
