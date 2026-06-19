@@ -1,6 +1,6 @@
 package org.example.config;
 
-import com.airline.common.model.FlightSearchResponse;
+import org.example.model.FlightSearchResponse;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;

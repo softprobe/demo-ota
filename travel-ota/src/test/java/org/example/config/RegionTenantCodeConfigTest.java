@@ -1,6 +1,6 @@
 package org.example.config;
 
-import com.airline.common.model.FlightSearchResponse;
+import org.example.model.FlightSearchResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

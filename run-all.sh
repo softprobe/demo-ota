@@ -33,7 +33,7 @@ start_service() {
   pgids+=("${pgid}")
 }
 
-start_service "${SCRIPT_DIR}/sp-airline"
+# Upstream airline mock is the hosted NDC worker (AIRLINE_NDC_BASE_URL); no local sp-airline.
 start_service "${SCRIPT_DIR}/travel-ota"
 
 wait

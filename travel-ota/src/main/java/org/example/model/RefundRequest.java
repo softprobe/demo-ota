@@ -1,4 +1,4 @@
-package com.airline.common.model;
+package org.example.model;
 
 import lombok.Data;
 import jakarta.validation.constraints.NotBlank;
