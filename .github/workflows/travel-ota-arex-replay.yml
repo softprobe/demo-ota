@@ -5,14 +5,12 @@ on:
     branches:
       - '**'
     paths:
-      - 'airline-common/**'
       - 'travel-ota/**'
       - 'pom.xml'
       - 'scripts/arex-replay-ci.mjs'
       - '.github/workflows/travel-ota-arex-replay.yml'
   pull_request:
     paths:
-      - 'airline-common/**'
       - 'travel-ota/**'
       - 'pom.xml'
       - 'scripts/arex-replay-ci.mjs'
@@ -37,7 +35,7 @@ jobs:
       AREX_ENABLE_MOCK: 'true'
       TRAVEL_OTA_PORT: '19380'
       TRAVEL_OTA_LOCAL_URL: http://127.0.0.1:19380/
-      SP_AIRLINE_URL: http://127.0.0.1:8081/airline-api/v1
+      AIRLINE_NDC_BASE_URL: https://spair.softprobe.ai/ndc/v21.3
 
     steps:
       - name: Checkout
@@ -85,31 +83,22 @@ jobs:
         run: |
           curl -fL -o travel-ota/sp-agent.jar https://storage.googleapis.com/softprobe-published-files/agent/longteng/v3.9.29-longteng/sp-agent-v3.9.29-longteng-jdk11.jar
 
-      - name: Start sp-airline
+      - name: Wait for NDC airline worker
         run: |
-          chmod +x sp-airline/run.sh
-          mkdir -p .artifacts
-          nohup bash -lc 'cd sp-airline && ./run.sh' > .artifacts/sp-airline.stdout.log 2>&1 &
-          echo $! > .artifacts/sp-airline.pid
-
-      - name: Wait for sp-airline to be ready
-        run: |
-          for i in $(seq 1 120); do
-            if curl -fsS "${SP_AIRLINE_URL}/health" > /dev/null; then
-              echo "sp-airline is ready"
+          for i in $(seq 1 60); do
+            if curl -fsS "https://spair.softprobe.ai/health" > /dev/null; then
+              echo "NDC airline worker is ready"
               exit 0
             fi
             sleep 2
           done
-          echo "sp-airline did not become ready in time"
-          echo "--- sp-airline stdout ---"
-          tail -n 200 .artifacts/sp-airline.stdout.log || true
+          echo "NDC airline worker did not become ready in time"
           exit 1
 
       - name: Start travel-ota
         run: |
           mkdir -p .artifacts
-          nohup bash -lc 'cd travel-ota && java -javaagent:sp-agent.jar -Dsp.app.id=504c5a6db168cdc4 -Dsp.storage.service.host=https://storage-onpremise-gcp.softprobe.ai -Dserver.port='"${TRAVEL_OTA_PORT}"' -DAIRLINE_BASE_URL='"${SP_AIRLINE_URL}"' -jar target/travel-ota-1.0-SNAPSHOT.jar' > .artifacts/travel-ota.stdout.log 2>&1 &
+          nohup bash -lc 'cd travel-ota && java -javaagent:sp-agent.jar -Dsp.app.id=504c5a6db168cdc4 -Dsp.storage.service.host=https://storage-onpremise-gcp.softprobe.ai -Dserver.port='"${TRAVEL_OTA_PORT}"' -DAIRLINE_NDC_BASE_URL='"${AIRLINE_NDC_BASE_URL}"' -jar target/travel-ota-1.0-SNAPSHOT.jar' > .artifacts/travel-ota.stdout.log 2>&1 &
           echo $! > .artifacts/travel-ota.pid
 
       - name: Wait for travel-ota to be ready
@@ -193,14 +182,6 @@ jobs:
         run: |
           if [ -f .artifacts/travel-ota.pid ]; then
             PID="$(cat .artifacts/travel-ota.pid)"
-            if kill -0 "${PID}" 2>/dev/null; then
-              kill "${PID}" || true
-              sleep 5
-              kill -9 "${PID}" 2>/dev/null || true
-            fi
-          fi
-          if [ -f .artifacts/sp-airline.pid ]; then
-            PID="$(cat .artifacts/sp-airline.pid)"
             if kill -0 "${PID}" 2>/dev/null; then
               kill "${PID}" || true
               sleep 5
