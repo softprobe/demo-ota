@@ -2,10 +2,12 @@ package org.example.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 @Data
 @Component
+@Primary
 @ConfigurationProperties(prefix = "app.airline")
 public class AirlineApiConfig {
     
