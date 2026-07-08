@@ -218,6 +218,8 @@ public class FlightService {
         BigDecimal totalAmount = order.getAmount() != null ? order.getAmount() : BigDecimal.ZERO;
         BigDecimal cancellationFee = calculateCancellationFee(hoursUntilDeparture, request.getRefundReason(), totalAmount);
         BigDecimal netRefundAmount = totalAmount.subtract(cancellationFee);
+        logger.info("Refund fee computed locally: hoursUntilDeparture={}, reason={}, fee={}, net={}",
+                hoursUntilDeparture, request.getRefundReason(), cancellationFee, netRefundAmount);
 
         // HTTP —— 调 sp-airline 执行退票
         String url = airlineApiConfig.getBaseUrl() + REFUND_PROCESS_ENDPOINT;
