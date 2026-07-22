@@ -350,7 +350,7 @@ public class FlightService {
         // 个人原因 —— 按距起飞时长分档
         if (hoursUntilDeparture > 72) {
             return scale(totalAmount.multiply(new BigDecimal("0.15"))); // 15%
-        } else if (hoursUntilDeparture > 24) {
+        } else if (hoursUntilDeparture > 48) {
             return scale(totalAmount.multiply(new BigDecimal("0.30"))); // 30%
         } else {
             return scale(totalAmount.multiply(new BigDecimal("0.50"))); // 50%
