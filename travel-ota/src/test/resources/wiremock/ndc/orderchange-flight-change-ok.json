@@ -1,0 +1,25 @@
+{
+  "IATA_OrderViewRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-CHANGE"
+    },
+    "Response": {
+      "OrderChange": {
+        "changeId": "CHG-WIREMOCK-001",
+        "originalBookingId": "BK1784828900553",
+        "newBookingId": "BK1784828900999",
+        "newConfirmationNumber": "L5CD12",
+        "status": "SUCCESS",
+        "message": "Flight change completed",
+        "failureReason": null,
+        "originalPrice": 824,
+        "newPrice": 900,
+        "changeFee": 50,
+        "priceDifference": 76,
+        "totalAdditionalPayment": 126,
+        "currency": "USD",
+        "changeDate": "2026-07-23T18:00:00"
+      }
+    }
+  }
+}

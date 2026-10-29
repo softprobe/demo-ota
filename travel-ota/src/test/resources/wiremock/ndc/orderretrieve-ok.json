@@ -1,0 +1,46 @@
+{
+  "IATA_OrderViewRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-RETRIEVE"
+    },
+    "Response": {
+      "Order": {
+        "OrderID": "BK1784828900553",
+        "BookingRefID": "L5AB90",
+        "StatusCode": "TICKETED",
+        "CreationDateTime": "2026-07-23T17:40:00",
+        "FlightInfo": {
+          "flightId": "FL-WIREMOCK-001",
+          "flightNumber": "LH775",
+          "departureAirport": "SFO",
+          "departureCity": "San Francisco",
+          "departureTime": "2026-10-01T00:28:00",
+          "arrivalAirport": "LAX",
+          "arrivalCity": "Los Angeles",
+          "arrivalTime": "2026-10-01T02:13:00",
+          "cabinClass": "ECONOMY"
+        },
+        "Passengers": [
+          {
+            "passengerId": "PAX-001",
+            "passengerType": "ADULT",
+            "firstName": "Demo",
+            "lastName": "Visitor",
+            "documentType": "PASSPORT",
+            "documentNumber": "P1234567",
+            "seatNumber": "12A",
+            "mealPreference": "STANDARD"
+          }
+        ],
+        "PaymentInfo": {
+          "paymentId": "PAY-WIREMOCK-001",
+          "amount": 824,
+          "currency": "USD",
+          "paymentMethod": "CREDIT_CARD",
+          "paymentStatus": "PAID",
+          "paymentDate": "2026-07-23T17:45:00"
+        }
+      }
+    }
+  }
+}

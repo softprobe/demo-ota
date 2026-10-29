@@ -1,0 +1,68 @@
+{
+  "IATA_AirShoppingRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-SEARCH"
+    },
+    "Response": {
+      "OffersGroup": {
+        "CarrierOffers": [
+          {
+            "Offer": {
+              "OfferID": "FL-WIREMOCK-001",
+              "OwnerCode": "LH",
+              "OfferItem": [
+                {
+                  "OfferItemID": "FARE-WIREMOCK-BASIC",
+                  "Price": {
+                    "TotalAmount": {
+                      "Value": 100,
+                      "CurCode": "USD"
+                    }
+                  },
+                  "FareDetail": {
+                    "FareBrand": "Basic",
+                    "CabinClass": "ECONOMY"
+                  }
+                },
+                {
+                  "OfferItemID": "FARE-WIREMOCK-STANDARD",
+                  "Price": {
+                    "TotalAmount": {
+                      "Value": 824,
+                      "CurCode": "USD"
+                    }
+                  },
+                  "FareDetail": {
+                    "FareBrand": "Standard",
+                    "CabinClass": "ECONOMY"
+                  }
+                }
+              ],
+              "JourneyOverview": {
+                "FlightNumber": "LH775",
+                "Departure": {
+                  "IATA_LocationCode": "SFO",
+                  "CityName": "San Francisco",
+                  "DateTime": "2026-10-01T00:28:00"
+                },
+                "Arrival": {
+                  "IATA_LocationCode": "LAX",
+                  "CityName": "Los Angeles",
+                  "DateTime": "2026-10-01T02:13:00"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DataLists": {
+        "Summary": {
+          "totalResults": 1,
+          "sortBy": "Best",
+          "lowestPrice": 100,
+          "highestPrice": 824
+        }
+      }
+    }
+  }
+}

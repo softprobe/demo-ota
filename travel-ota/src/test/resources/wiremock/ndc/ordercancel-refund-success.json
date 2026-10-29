@@ -1,0 +1,24 @@
+{
+  "IATA_OrderViewRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-REFUND"
+    },
+    "Response": {
+      "Refund": {
+        "refundId": "RF1784828902457",
+        "bookingId": "BK1784828900553",
+        "confirmationNumber": "L5AB90",
+        "status": "SUCCESS",
+        "refundAmount": 824.0,
+        "currency": "USD",
+        "cancellationFee": 247.2,
+        "netRefundAmount": 576.8,
+        "refundMethod": "ORIGINAL_PAYMENT",
+        "refundDate": "2026-07-23T17:48:22",
+        "message": "Refund processed successfully. Amount will be credited to your original payment method within 7-10 business days.",
+        "failureReason": null,
+        "estimatedRefundDays": 7
+      }
+    }
+  }
+}

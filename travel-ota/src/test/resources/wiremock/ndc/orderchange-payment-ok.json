@@ -1,0 +1,20 @@
+{
+  "IATA_OrderViewRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-PAYMENT"
+    },
+    "Response": {
+      "Payment": {
+        "paymentId": "PAY-WIREMOCK-001",
+        "status": "SUCCESS",
+        "bookingId": "BK1784828900553",
+        "amount": 824,
+        "currency": "USD",
+        "paymentMethod": "CREDIT_CARD",
+        "paymentDate": "2026-07-23T17:45:00",
+        "transactionId": "TXN-WIREMOCK-001",
+        "message": "Payment processed and ticket issued"
+      }
+    }
+  }
+}

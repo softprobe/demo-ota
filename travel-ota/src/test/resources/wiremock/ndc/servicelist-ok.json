@@ -1,0 +1,23 @@
+{
+  "IATA_ServiceListRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-SERVICELIST"
+    },
+    "Response": {
+      "ALaCarteOffer": {
+        "OfferID": "BAG-OFFER-001",
+        "OfferItem": [
+          {
+            "OfferItemID": "BAG-ITEM-CHECKED",
+            "UnitPrice": {
+              "TotalAmount": {
+                "Value": 45,
+                "CurCode": "USD"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
