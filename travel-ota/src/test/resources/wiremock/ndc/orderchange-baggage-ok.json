@@ -1,0 +1,22 @@
+{
+  "IATA_OrderViewRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-BAGGAGE"
+    },
+    "Response": {
+      "Baggage": {
+        "baggageOrderId": "BAG-WIREMOCK-001",
+        "bookingId": "BK1784828900553",
+        "confirmationNumber": "L5AB90",
+        "passengerId": "PAX-001",
+        "status": "SUCCESS",
+        "message": "Additional baggage purchased",
+        "failureReason": null,
+        "totalAmount": 45,
+        "currency": "USD",
+        "purchaseDate": "2026-07-23T17:50:00",
+        "paymentStatus": "PAID"
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "IATA_OfferPriceRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-OFFERPRICE"
+    },
+    "Response": {
+      "PricedOffer": {
+        "OfferID": "FL-WIREMOCK-001",
+        "OfferItem": [
+          {
+            "OfferItemID": "FARE-WIREMOCK-STANDARD",
+            "Price": {
+              "TotalAmount": {
+                "Value": 824,
+                "CurCode": "USD"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "IATA_OrderViewRS": {
+    "PayloadAttributes": {
+      "CorrelationID": "CORR-WIREMOCK-REFUND-FAIL"
+    },
+    "Response": {
+      "Refund": {
+        "status": "FAILED",
+        "failureReason": "Booking not found",
+        "message": "Unable to find booking"
+      }
+    }
+  }
+}

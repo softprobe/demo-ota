@@ -54,6 +54,14 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- WireMock stubs for NDC upstream (rigid Softprobe-style replay fixtures) -->
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>3.9.2</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Lombok for reducing boilerplate code -->
         <dependency>
             <groupId>org.projectlombok</groupId>
