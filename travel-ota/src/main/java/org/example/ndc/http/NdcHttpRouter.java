@@ -28,14 +28,14 @@ public class NdcHttpRouter {
             NingNdcTransport ningTransport,
             JdkUrlConnectionNdcTransport jdkTransport,
             Apache3NdcTransport apache3Transport,
-            Apache4AsyncNdcTransport apache4AsyncTransport) {
+			Apache4AsyncNdcTransport apache4AsyncTransport) {
         this.airlineApiConfig = airlineApiConfig;
         this.transports = new EnumMap<>(NdcCallSite.class);
         transports.put(NdcCallSite.SEARCH_AIRSHOPPING, restTemplateTransport);
         transports.put(NdcCallSite.BOOK_OFFER_PRICE, apache4SyncTransport);
         transports.put(NdcCallSite.BOOK_ORDER_CREATE, okHttpTransport);
         transports.put(NdcCallSite.PAY_ORDER_CHANGE, feignTransport);
-        transports.put(NdcCallSite.QUERY_ORDER_RETRIEVE, webClientTransport);
+		transports.put(NdcCallSite.QUERY_ORDER_RETRIEVE, webClientTransport);
         transports.put(NdcCallSite.REFUND_ORDER_CANCEL, ningTransport);
         transports.put(NdcCallSite.CHANGE_AIRSHOPPING, jdkTransport);
         transports.put(NdcCallSite.CHANGE_ORDER_CHANGE, apache3Transport);

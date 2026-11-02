@@ -6,6 +6,7 @@ import org.example.ndc.NdcAirlineClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -22,6 +23,9 @@ public class FlightService {
 
     @Autowired
     private RegionalTaxService regionalTaxService;
+
+    @Autowired
+    private ObjectProvider<TravelDatabaseService> travelDatabaseService;
 
     public FlightSearchResponse searchFlights(FlightSearchRequest request) {
         try {
@@ -51,6 +55,7 @@ public class FlightService {
             BookingResponse bookingResponse = ndcAirlineClient.bookFlight(request);
             if (bookingResponse.getConfirmationNumber() != null) {
                 bookings.put(bookingResponse.getConfirmationNumber(), bookingResponse);
+                travelDatabaseService.ifAvailable(database -> database.saveBooking(bookingResponse));
             }
             return bookingResponse;
         } catch (Exception e) {
@@ -67,7 +72,9 @@ public class FlightService {
                     request.getAmount(),
                     request.getCurrency());
             logger.info("Calling airline NDC API for payment");
-            return ndcAirlineClient.payAndIssue(request);
+            PaymentResponse paymentResponse = ndcAirlineClient.payAndIssue(request);
+            travelDatabaseService.ifAvailable(database -> database.savePayment(paymentResponse));
+            return paymentResponse;
         } catch (Exception e) {
             logger.error("Failed to process payment through airline NDC API", e);
             throw new RuntimeException("Failed to process payment through airline API: " + e.getMessage());
@@ -76,8 +83,16 @@ public class FlightService {
 
     public BookingResponse queryOrder(OrderQueryRequest request) {
         try {
-            logger.info("Calling airline NDC API for order query");
-            return ndcAirlineClient.queryOrder(request);
+            // Keep the airline order-retrieval dependency in the existing flow.
+            // In the OBI profile, the relational record is authoritative when
+            // present, while the airline response remains a fallback.
+            BookingResponse airlineResponse = ndcAirlineClient.queryOrder(request);
+            TravelDatabaseService database = travelDatabaseService.getIfAvailable();
+            if (database != null) {
+                BookingResponse storedBooking = database.findBooking(request);
+                return storedBooking != null ? storedBooking : airlineResponse;
+            }
+            return airlineResponse;
         } catch (Exception e) {
             logger.error("Failed to query order from airline NDC API", e);
             throw new RuntimeException("Failed to query order from airline API: " + e.getMessage());
