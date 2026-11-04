@@ -192,8 +192,7 @@ async function processPayment() {
         const response = await fetch('/api/flights/payandissue', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'x-sp-session-id': getSessionId()
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(paymentData)
         });
