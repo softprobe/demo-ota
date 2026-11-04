@@ -51,6 +51,10 @@ A demo flight booking system built with JDK 21 and Spring Boot 3.x. It includes 
 
 At replay, inject a different `tenant.sales-region` (e.g. `EU` vs recorded `MEA`) so tax — and fare prices — differ; replay diff fails if static config is not refreshed. Test: `mvn test -Dtest=RegionTenantCodeConfigTest`.
 
+## Browser session capture
+
+The static pages include the `@softprobe/web` loader before their page scripts. For a capture-enabled deployment, configure the loader's `data-api-key`, `data-base-url`, and `data-api-origins` attributes with the owning Agent's ingest-only API key, Explorer's browser-facing base URL, and the exact application API origins that may receive W3C trace context. Explorer does not generate this snippet yet, so set those attributes from the Agent setup values. The Java service needs no capture configuration controller or read credential. Input masking is enabled by default; `.capture-private` is the example visible-text masking selector.
+
 Workspace E2E: [`arex/e2e/instrumentation-matrix.md`](https://github.com/softprobe/arex/blob/main/e2e/instrumentation-matrix.md).
 
 ## Instrumentation E2E map

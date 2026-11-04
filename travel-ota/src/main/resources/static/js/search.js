@@ -128,7 +128,7 @@ async function handleSearch(event) {
             // Store search results to sessionStorage, then navigate to list page
             sessionStorage.setItem('searchResults', JSON.stringify(result));
             sessionStorage.setItem('searchRequest', JSON.stringify(searchData));
-            window.location.href = '/list.html';
+            window.location.href = 'list.html';
         } else {
             alert('Search failed, please try again');
         }
