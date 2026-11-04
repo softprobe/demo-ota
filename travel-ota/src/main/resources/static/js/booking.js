@@ -232,8 +232,7 @@ async function handleBooking(event) {
         const response = await fetch('/api/flights/book', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'x-sp-session-id': getSessionId()
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(bookingData)
         });

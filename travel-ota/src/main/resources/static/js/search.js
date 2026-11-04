@@ -118,8 +118,7 @@ async function handleSearch(event) {
         const response = await fetch('/api/flights/search', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'x-sp-session-id': getSessionId()
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(searchData)
         });
@@ -129,7 +128,7 @@ async function handleSearch(event) {
             // Store search results to sessionStorage, then navigate to list page
             sessionStorage.setItem('searchResults', JSON.stringify(result));
             sessionStorage.setItem('searchRequest', JSON.stringify(searchData));
-            window.location.href = '/list.html';
+            window.location.href = 'list.html';
         } else {
             alert('Search failed, please try again');
         }
