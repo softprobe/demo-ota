@@ -5,26 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.model.BookingResponse;
 import org.example.model.OrderQueryRequest;
 import org.example.model.PaymentResponse;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 @Service
-@Profile("obi-replay")
 public class TravelDatabaseService {
-    private final JdbcTemplate orders;
-    private final JdbcTemplate payments;
+    private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
 
     public TravelDatabaseService(
-            @Qualifier("ordersJdbcTemplate") JdbcTemplate orders,
-            @Qualifier("paymentsJdbcTemplate") JdbcTemplate payments,
+            JdbcTemplate jdbc,
             ObjectMapper objectMapper) {
-        this.orders = orders;
-        this.payments = payments;
+        this.jdbc = jdbc;
         this.objectMapper = objectMapper;
     }
 
@@ -33,11 +27,9 @@ public class TravelDatabaseService {
             return;
         }
         String bookingJson = toJson(booking);
-        orders.update(
-                "INSERT INTO ota_orders (confirmation_number, passenger_last_name, booking_json) "
-                        + "VALUES (?, ?, ?::jsonb) "
-                        + "ON CONFLICT (confirmation_number) DO UPDATE SET "
-                        + "passenger_last_name = EXCLUDED.passenger_last_name, booking_json = EXCLUDED.booking_json",
+        jdbc.update(
+                "MERGE INTO ota_orders (confirmation_number, passenger_last_name, booking_json) "
+                        + "KEY (confirmation_number) VALUES (?, ?, ?)",
                 booking.getConfirmationNumber(),
                 booking.getPassengers().get(0).getLastName(),
                 bookingJson);
@@ -47,10 +39,9 @@ public class TravelDatabaseService {
         if (payment == null || !"SUCCESS".equalsIgnoreCase(payment.getStatus())) {
             return;
         }
-        payments.update(
-                "INSERT INTO ota_payments (payment_id, booking_id, status, amount, currency) "
-                        + "VALUES (?, ?, ?, ?, ?) "
-                        + "ON DUPLICATE KEY UPDATE status = VALUES(status), amount = VALUES(amount), currency = VALUES(currency)",
+        jdbc.update(
+                "MERGE INTO ota_payments (payment_id, booking_id, status, amount, currency) "
+                        + "KEY (payment_id) VALUES (?, ?, ?, ?, ?)",
                 payment.getPaymentId(),
                 payment.getBookingId(),
                 payment.getStatus(),
@@ -59,8 +50,8 @@ public class TravelDatabaseService {
     }
 
     public BookingResponse findBooking(OrderQueryRequest query) {
-        List<String> rows = orders.query(
-                "SELECT booking_json::text FROM ota_orders "
+        List<String> rows = jdbc.query(
+                "SELECT booking_json FROM ota_orders "
                         + "WHERE confirmation_number = ? AND passenger_last_name = ?",
                 (resultSet, rowNum) -> resultSet.getString(1),
                 query.getConfirmationNumber(),

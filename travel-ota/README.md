@@ -143,7 +143,10 @@ travel-ota
 3. Open http://localhost:8080
 
 ## Sample data
-This service uses mocked data and does not require a database:
+This service uses mocked flight and fare data. Booking and payment records use an
+embedded H2 database that starts with the application; no database service or
+profile-specific database configuration is required. The database is in-memory,
+so its records last for the lifetime of the Java process:
 - Flight data for multiple carriers
 - Fare options across suppliers
 - Booking flow with generated PNR and ticket number

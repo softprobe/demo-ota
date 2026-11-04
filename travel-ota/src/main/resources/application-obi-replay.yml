@@ -1,8 +1,0 @@
-demo:
-  database:
-    orders-url: jdbc:postgresql://softprobe-gateway:5432/travel_orders?sslmode=disable&preferQueryMode=simple
-    orders-username: travel
-    orders-password: softprobe
-    payments-url: jdbc:mysql://softprobe-gateway:3306/travel_payments?useSSL=false&allowPublicKeyRetrieval=true&useServerPrepStmts=false
-    payments-username: root
-    payments-password: softprobe
