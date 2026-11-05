@@ -1,0 +1,3 @@
+# Verified against PyPI metadata; opentelemetry-proto requires protobuf>=5,<8.
+opentelemetry-proto==1.45.2
+protobuf==7.36.2

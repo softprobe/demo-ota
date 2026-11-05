@@ -1,0 +1,61 @@
+{
+  "evidence_status": "source-derived; no container runtime or booking mutation performed",
+  "deployment_commit": "c1885d713430f193a867e4772b85420d06f82b5e",
+  "source_repository": "https://github.com/softprobe/demo-air",
+  "source_commit_from_image_provenance": "c21fe8de7ef161b02b5779bee06548ca284351bd",
+  "images": {
+    "ota": {"tag": "softprobe/sp-ota:v2.0.3", "container_http_port": 8080, "published_host_port": 8080, "platforms": ["linux/amd64", "linux/arm64"]},
+    "airline": {"tag": "softprobe/sp-airline:v2.0.3", "container_http_port": 8081, "published_host_port": null, "platforms": ["linux/amd64", "linux/arm64"]}
+  },
+  "ota_base_url_in_pinned_compose": "http://localhost:8080",
+  "airline_base_url_inside_compose": "http://demo-airline:8081/airline-api/v1",
+  "headers": {
+    "Content-Type": "application/json",
+    "x-sp-session-id": "sp-session-<UUID-v4-shaped-string>; correlation, not authentication; reuse across the flow"
+  },
+  "authentication_note": "No OTA Authorization or API-key header is declared by the examined client/controller. Telemetry credentials are separate. The OTA service does not explicitly forward the session header to the airline.",
+  "operations": {
+    "search": {"method": "POST", "path": "/api/flights/search", "request_type": "FlightSearchRequest", "response_type": "FlightSearchResponse"},
+    "prepare": {"method": null, "path": null, "local_shape": {"flight": "selected FlightOption from search snapshot", "fare": "selected FareOption belonging to that flight"}, "note": "Local staging only; no hold, prepare token, price guarantee, or inventory reservation"},
+    "book": {"method": "POST", "path": "/api/flights/book", "request_type": "BookingRequest", "response_type": "BookingResponse"},
+    "query": {"method": "POST", "path": "/api/flights/orders/query", "request_type": "OrderQueryRequest", "response_type": "BookingResponse"},
+    "payment_separate_not_required": {"method": "POST", "path": "/api/flights/payandissue", "request_type": "PaymentRequest", "response_type": "PaymentResponse"}
+  },
+  "field_shapes": {
+    "FlightSearchRequest": {"fromCity": "string", "toCity": "string", "departureDate": "YYYY-MM-DD", "tripType": "ONE_WAY|ROUND_TRIP", "cabinClass": "ECONOMY|PREMIUM_ECONOMY|BUSINESS|FIRST", "passengerInfo": {"adults": "integer; default 1", "children": "integer; default 0", "infants": "integer; default 0"}},
+    "FlightSearchResponse": {"flights": "FlightOption[]", "summary": "SearchSummary"},
+    "FlightOption": {"flightId": "string", "airlineCode": "string", "airlineName": "string", "flightNumber": "string", "departureAirport": "string", "departureCity": "string", "departureTime": "local datetime string", "arrivalAirport": "string", "arrivalCity": "string", "arrivalTime": "local datetime string", "durationMinutes": "integer", "flightType": "string; mock DIRECT", "fareOptions": "FareOption[]", "hasWifi": "boolean", "hasPowerOutlet": "boolean", "co2Emission": "string"},
+    "FareOption": {"fareId": "string", "providerName": "string", "price": "number", "currency": "string", "cabinClass": "string", "baggageInfo": "BaggageInfo", "rating": "integer", "reviewCount": "integer", "recommended": "boolean; not isRecommended on the wire", "paymentOption": "nullable/omitted string", "fareBrand": "string", "description": "string"},
+    "BaggageInfo": {"cabinBags": "integer", "checkedBags": "integer", "cabinBagIncluded": "boolean", "checkedBagIncluded": "boolean"},
+    "SearchSummary": {"totalResults": "integer", "lowestPrice": "number", "highestPrice": "number", "sortBy": "string", "datePrices": "DatePrice[]"},
+    "DatePrice": {"date": "dd MMM display string", "minPrice": "number", "selected": "boolean; not isSelected on the wire"},
+    "BookingRequest": {"flightId": "selected flightId", "fareId": "fareId from the selected flight", "passengers": "Passenger[]; nonempty", "contactInfo": "ContactInfo"},
+    "Passenger": {"passengerType": "ADULT|CHILD|INFANT", "firstName": "string", "lastName": "string", "documentType": "PASSPORT|ID_CARD", "documentNumber": "synthetic string only", "dateOfBirth": "optional YYYY-MM-DD string", "nationality": "string; required by model annotations but omitted by existing UI"},
+    "ContactInfo": {"phone": "string", "email": "string", "address": "optional string"},
+    "OrderQueryRequest": {"confirmationNumber": "exact returned confirmationNumber", "passengerLastName": "first passenger surname"},
+    "BookingResponse": {"bookingId": "string", "status": "string", "flightInfo": "FlightInfo; may be absent on invalid IDs even with CONFIRMED", "passengers": "PassengerInfo[]", "paymentInfo": "PaymentInfo", "bookingDate": "local datetime string", "confirmationNumber": "six uppercase alphanumeric characters"},
+    "FlightInfo": {"flightId": "string", "flightNumber": "string", "departureAirport": "string", "departureCity": "string", "departureTime": "local datetime string", "arrivalAirport": "string", "arrivalCity": "string", "arrivalTime": "local datetime string", "cabinClass": "string"},
+    "PassengerInfo": {"passengerId": "string", "passengerType": "string", "firstName": "string; truncated to 10 chars", "lastName": "string; truncated to 10 chars", "documentType": "string", "documentNumber": "string", "seatNumber": "string", "mealPreference": "string"},
+    "PaymentInfo": {"paymentId": "string; PENDING after book", "amount": "number; selected fare price, not multiplied by passengers", "currency": "string", "paymentMethod": "string; PENDING after book", "paymentStatus": "string; PENDING after book, PAID after separate payment", "paymentDate": "local datetime string"},
+    "PaymentRequest": {"bookingId": "string", "paymentMethod": "string", "amount": "positive decimal", "currency": "string", "paymentDetails": "PaymentDetails"},
+    "PaymentDetails": {"cardNumber": "string; do not collect in this flow", "cardHolderName": "string", "expiryDate": "string", "cvv": "string; do not collect in this flow", "billingAddress": "optional string", "billingCity": "optional string", "billingCountry": "optional string", "billingPostalCode": "optional string"},
+    "PaymentResponse": {"paymentId": "string", "status": "string; mock SUCCESS", "bookingId": "declared but unpopulated/omitted by mock", "amount": "number", "currency": "string", "paymentMethod": "string", "paymentDate": "local datetime string", "transactionId": "string", "message": "string", "errorCode": "declared but unpopulated/omitted by success mock"}
+  },
+  "synthetic_source_fixture": {"fromCity": "LHR", "toCity": "CDG", "departureDate_rule": "LocalDate.now().plusDays(7)", "tripType": "ONE_WAY", "cabinClass": "ECONOMY", "passengerInfo": {"adults": 1, "children": 0, "infants": 0}, "passenger": {"firstName": "John", "lastName": "Doe", "passengerType": "ADULT", "documentType": "PASSPORT", "documentNumber": "123456789", "dateOfBirth": "1990-01-01", "nationality": "US"}, "email": "test@example.com"},
+  "mock_airports": ["LHR", "CDG", "FRA", "AMS", "MAD", "BCN", "FCO", "MXP", "ZRH", "VIE", "CPH", "ARN", "OSL", "HEL", "WAW", "PRG", "BUD", "ATH", "IST"],
+  "guardrails": [
+    "Use returned flightId and fareId from one search snapshot; never fabricate IDs.",
+    "Prepare locally, show a review, require explicit confirmation, then book once.",
+    "CONFIRMED alone is insufficient: missing flightInfo and zero amount are possible.",
+    "Read back by confirmationNumber and first passenger last name before claiming confirmation.",
+    "Validate selected flight/route/date, passengers, positive amount, currency, bookingId and confirmationNumber.",
+    "Keep original fareId locally; BookingResponse does not echo it.",
+    "Call booking confirmed/payment pending; do not claim payment or ticket issuance.",
+    "Do not blindly retry a timed-out or malformed booking/payment response; no upstream idempotency was found.",
+    "Accept empty/non-JSON errors; OTA search/book/query service errors use 400 with error/message/timestamp, but payment errors may be empty.",
+    "Avoid airline v2.0.1 for this flow: its source controller has no order-query route.",
+    "Mock state is in-memory, names truncate to 10 characters, and booked amount is one fare price regardless of passenger count.",
+    "Mock ignores requested round-trip/cabin semantics; all generated fares are ECONOMY/USD. No fixed route/date window is defined."
+  ],
+  "sources_and_line_references": "See CONTRACT.md and contract-evidence.json beside this file."
+}

@@ -1,0 +1,20 @@
+log_level: info
+ebpf:
+  buffer_sizes:
+    http: 65536
+  payload_extraction:
+    http:
+      enrichment:
+        enabled: true
+        policy:
+          default_action:
+            headers: exclude
+            body: include
+          obfuscation_string: "***"
+        rules:
+          - action: include
+            type: headers
+            scope: request
+            match:
+              patterns:
+                - x-sp-session-id
