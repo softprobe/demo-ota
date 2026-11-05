@@ -15,3 +15,14 @@
 **/node_modules/
 .spcode/
 .opencode/
+
+# Only the demo's reviewed sandbox plugin/tools are source code.
+# Keep generated OpenCode state and all other .opencode directories ignored.
+!travel-agent-demo/.opencode/
+travel-agent-demo/.opencode/*
+!travel-agent-demo/.opencode/plugins/
+!travel-agent-demo/.opencode/tools/
+travel-agent-demo/.opencode/plugins/*
+travel-agent-demo/.opencode/tools/*
+!travel-agent-demo/.opencode/plugins/tracing.ts
+!travel-agent-demo/.opencode/tools/travel.ts

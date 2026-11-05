@@ -9,6 +9,21 @@ Upstream airline mock (NDC 21.3 JSON): **[sp-airline-ndc](https://github.com/sof
 | Module | Role |
 |--------|------|
 | `travel-ota` | Spring Boot OTA layer (Java agent instrumented) |
+| [`travel-agent-demo`](travel-agent-demo/README.md) | OpenCode browser chat, manager-approval silent-failure scenario, and local Softprobe evidence view |
+
+## OpenCode travel agent demo
+
+```bash
+cd travel-agent-demo
+npm ci --ignore-scripts
+npm test
+```
+
+See the [demo README](travel-agent-demo/README.md) for the isolated OpenCode, Docker, and private staging-credential setup. No model prompt is sent by installation or the offline tests. Running interactive conversations requires your configured provider account.
+
+All new **travel-agent demo application PRs belong in this repository**. The complete application was relocated from the misplaced `deployment-k8s` PR, including its earlier integration work and the manager-approval scenario; see the [migration and dependency notes](travel-agent-demo/MIGRATION.md).
+
+The agent demo currently uses its verified, pinned synthetic Docker services. It does **not** replace or rebuild the Java/NDC `travel-ota` module below; do not run both on their default port 8080 simultaneously.
 
 ## Build
 

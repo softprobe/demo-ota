@@ -1,0 +1,13 @@
+{
+  "dto_shapes_verified": 18,
+  "source_link_line_ranges_verified": 28,
+  "provenance_records_verified": 4,
+  "base_fare_price_range_computed": [
+    750,
+    849
+  ],
+  "json_templates_parse": true,
+  "architecture_metadata_verified": true,
+  "source_contract_verification": "PASS",
+  "runtime_tested": false
+}
