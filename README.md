@@ -9,6 +9,11 @@ Upstream airline mock (NDC 21.3 JSON): **[sp-airline-ndc](https://github.com/sof
 | Module | Role |
 |--------|------|
 | `travel-ota` | Spring Boot OTA layer (Java agent instrumented) |
+| [`travel-agent-demo`](travel-agent-demo/README.md) | OpenCode travel agent with a browser chat and synthetic booking flow |
+
+## Travel agent demo
+
+The `travel-agent-demo` module adds a local browser-based travel agent alongside the Java OTA service. At the local demo entrypoint, the original OTA site remains at `/` and the agent chat is at `/agent`. It runs against synthetic travel services and supports a manager-approval scenario for fares above $600 USD. Its setup, safety boundaries, and test instructions are in the [module README](travel-agent-demo/README.md).
 
 ## Build
 

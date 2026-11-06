@@ -1,0 +1,15 @@
+name: demo-ota-agent
+services:
+  demo-airline:
+    image: docker.io/softprobe/sp-airline:v2.0.3
+    environment:
+      SERVER_PORT: "8081"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
+  travel-ui:
+    image: docker.io/softprobe/sp-ota:v2.0.3
+    depends_on: [demo-airline]
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      SERVER_PORT: "8080"
+      AIRLINE_BASE_URL: "http://demo-airline:8081/airline-api/v1"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
