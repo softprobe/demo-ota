@@ -85,7 +85,7 @@ export function createGateway({ root, engine, store, internalToken, travel = new
     record.generation = (record.generation ?? 0) + 1;
     const generation = record.generation;
     persist();
-    void engine.request(`/session/${encodeURIComponent(record.id)}/message`, { method: 'POST', body: { parts: [{ type: 'text', text }] } })
+    void engine.request(`/session/${encodeURIComponent(record.id)}/message`, { method: 'POST', body: { parts: [{ type: 'text', text }], selectedOfferId: record.selectedOfferId ?? null } })
       .then(result => {
         if (record.generation !== generation) return;
         const error = result?.info?.error;
@@ -139,13 +139,21 @@ export function createGateway({ root, engine, store, internalToken, travel = new
         let result;
         if (operation === 'search') {
           requireKeys(args, ['origin', 'destination', 'date']);
+          if (record.selectedOfferId) throw publicError('The traveler selected a flight. Reuse that offer instead of searching again.', 409);
+          if (record.preparedGeneration === generation) throw publicError('A booking review was just prepared. Start a new agent message before searching again.', 409);
           const offers = await travel.search(args);
           requireCurrentTurn();
+          if (record.selectedOfferId) throw publicError('The traveler selected a flight. Reuse that offer instead of searching again.', 409);
+          if (record.preparedGeneration === generation) throw publicError('A booking review was just prepared. Start a new agent message before searching again.', 409);
           store.setOffers(sessionId, offers);
           result = { offers: offers.map(offer => ({ ...offer, offerId: offer.id })), constraints: 'One-way economy, one adult. Synthetic inventory; no payment.' };
         } else if (operation === 'prepare') {
           requireKeys(args, ['offerId', 'firstName', 'lastName']);
+          if (record.preparedGeneration === generation) throw publicError('A review was already prepared in this agent turn.', 409);
+          if (record.selectedOfferId && args.offerId !== record.selectedOfferId) throw publicError('Prepare the exact flight offer selected by the traveler.', 409);
           result = store.prepare(sessionId, { offerId: args.offerId, passenger: { firstName: args.firstName, lastName: args.lastName } });
+          record.preparedGeneration = generation;
+          delete record.selectedOfferId;
         } else if (operation === 'book') {
           requireKeys(args, ['requestId']);
           result = await store.submit(sessionId, args.requestId, request => travel.bookAndVerify(request));
@@ -208,9 +216,17 @@ export function createGateway({ root, engine, store, internalToken, travel = new
       }
       if (req.method !== 'POST') throw publicError('Method not allowed.', 405);
       if (action === 'messages') {
-        const { text } = await readJSON(req, ['text']);
+        const { text, offerId } = await readJSON(req, ['text', 'offerId']);
         if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw publicError('Enter a message of 1–4000 characters.');
-        queuePrompt(record, text.trim());
+        checkPrompt(record);
+        const message = text.trim();
+        if (offerId !== undefined) {
+          if (typeof offerId !== 'string' || !store.getOffers(record.id).some(offer => offer.id === offerId)) throw publicError('Choose a flight returned by this conversation.', 404);
+          record.selectedOfferId = offerId;
+        } else if (record.selectedOfferId && !/^[A-Za-z][A-Za-z' -]{0,9}\s+[A-Za-z][A-Za-z' -]{0,9}$/.test(message)) {
+          delete record.selectedOfferId;
+        }
+        queuePrompt(record, message);
         return reply(res, 202, { accepted: true });
       }
       if (action === 'approve') {

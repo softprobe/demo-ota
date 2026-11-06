@@ -55,13 +55,14 @@ async function mount(t, { session = sessionFixture(), approve, cancel } = {}) {
     let data;
     if (path === '/api/status' && method === 'GET') data = { ready: true, runtime: true, travel: true, providers: [{ id: 'google', label: 'Google Gemini', defaultModel: 'gemini-3.8-flash' }], defaultProvider: 'google', defaultModel: 'gemini-3.8-flash' };
     else if (path === `/api/sessions/${session.id}` && method === 'GET') data = structuredClone(session);
+    else if (path === `/api/sessions/${session.id}/messages` && method === 'POST') data = { accepted: true };
     else if (path === `/api/sessions/${session.id}/approve` && method === 'POST' && approve) data = approve(body, session);
     else if (path === `/api/sessions/${session.id}/cancel-booking` && method === 'POST' && cancel) data = cancel(body, session);
     else throw new Error(`Unexpected fixture fetch: ${method} ${path}`);
     return { ok: true, status: body?.injectSilentBug ? 202 : 200, text: async () => JSON.stringify(data) };
   };
   window.eval(app);
-  await until(() => window.document.getElementById('pending-status').textContent !== '', 'restored fixture');
+  await until(() => window.document.getElementById('pending-status').textContent !== '' || window.document.getElementById('messages').children.length > 0, 'restored fixture');
   const byId = id => window.document.getElementById(id);
   const posts = () => calls.filter(call => call.method === 'POST');
   const refresh = async () => {
@@ -119,6 +120,21 @@ test('assistant Markdown renders safely with formatted text and lists', async t 
   assert.equal(body.querySelector('code')?.textContent, 'OS438');
   assert.equal(body.querySelector('script'), null, 'raw HTML remains text and is never executed');
   assert.match(body.textContent, /<script>document\.body\.dataset\.pwned/);
+});
+
+test('a numbered offer choice sends its exact offer ID to the gateway', async t => {
+  const session = sessionFixture();
+  session.pending = null;
+  session.offers = [{ id: 'offer-1', total: 750, currency: 'USD', flightNumber: 'DEMO101', origin: 'CDG', destination: 'LHR', date: '2027-01-10' }];
+  const { window, byId, calls } = await mount(t, { session });
+  byId('message-input').value = '1';
+  byId('composer').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+  await until(() => calls.some(call => call.path === `/api/sessions/${session.id}/messages` && call.method === 'POST'), 'selected offer submission');
+  await until(() => byId('send-button').textContent === 'Send message', 'message completion');
+  const submitted = calls.find(call => call.path === `/api/sessions/${session.id}/messages` && call.method === 'POST');
+  assert.equal(submitted.body.offerId, 'offer-1');
+  assert.match(submitted.body.text, /review offer offer-1/);
+  assert.match(submitted.body.text, /Do not search again/);
 });
 
 test('over-policy requests do not show a disabled continue button while manager approval is pending', async t => {

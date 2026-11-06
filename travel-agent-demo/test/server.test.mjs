@@ -4,7 +4,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { createGateway } from '../src/server.mjs';
 
-async function fixture(t, { travel, pending = null } = {}) {
+async function fixture(t, { travel, pending = null, initialOffers = [] } = {}) {
   const root = fileURLToPath(new URL('../', import.meta.url));
   const upstreamRequests = [];
   const upstream = createHttpServer((req, res) => {
@@ -16,13 +16,19 @@ async function fixture(t, { travel, pending = null } = {}) {
   t.after(() => new Promise(resolve => upstream.close(resolve)));
   const savedPending = pending;
   const offers = new Map();
+  let currentPending = savedPending;
   let approvalCount = 0;
+  let searchCount = 0;
   const store = {
-    getPending: () => savedPending,
-    getOffers: id => offers.get(id) ?? [],
+    getPending: () => currentPending,
+    getOffers: id => offers.get(id) ?? initialOffers,
     getBooking: () => null,
     setOffers: (id, list) => offers.set(id, list),
-    approve: () => { approvalCount += 1; savedPending.managerApproval.status = 'pending'; },
+    prepare: (id, input) => {
+      currentPending = { id: 'prepared-review', status: 'awaiting_approval', offer: (offers.get(id) ?? initialOffers).find(offer => offer.id === input.offerId), passenger: input.passenger };
+      return currentPending;
+    },
+    approve: () => { approvalCount += 1; currentPending.managerApproval.status = 'pending'; },
     cancel: () => {},
   };
   let created = 0;
@@ -38,9 +44,9 @@ async function fixture(t, { travel, pending = null } = {}) {
     if (path.endsWith('/abort')) return true;
     return {};
   } };
-  const resolvedTravel = travel ?? {
+  const resolvedTravel = travel ? { ...travel, async search(args) { searchCount += 1; return travel.search(args); } } : {
     baseUrl: `http://127.0.0.1:${upstream.address().port}`,
-    async search() { return [{ id: 'offer-1', flightId: 'flight-1', fareId: 'fare-1' }]; },
+    async search() { searchCount += 1; return [{ id: 'offer-1', flightId: 'flight-1', fareId: 'fare-1' }]; },
   };
   const server = createGateway({ root, engine, store, internalToken: 'fixture-capability', travel: resolvedTravel, maxConversations: null, registryFilePath: null, basePath: '/agent' });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -51,7 +57,7 @@ async function fixture(t, { travel, pending = null } = {}) {
     for (const [name, value] of Object.entries(merged)) if (value === null) delete merged[name];
     return fetch(origin + path, { method: 'POST', headers: merged, body: JSON.stringify(body) });
   };
-  return { origin, post, engine, upstreamRequests, modelPrompts, approvalCount: () => approvalCount };
+  return { origin, post, engine, upstreamRequests, modelPrompts, approvalCount: () => approvalCount, searchCount: () => searchCount, currentPending: () => currentPending };
 }
 
 test('original OTA stays at / while the agent page and assets live under /agent', async t => {
@@ -100,6 +106,42 @@ test('agent travel tools need the local capability only', async t => {
   const authorized = await f.post('/agent/internal/travel/search', payload, { Authorization: 'Bearer fixture-capability', Origin: null });
   assert.equal(authorized.status, 200);
   assert.equal((await authorized.json()).offers[0].offerId, 'offer-1');
+});
+
+test('a search after preparing in the same agent turn cannot replace the review', async t => {
+  const f = await fixture(t);
+  const session = await (await f.post('/agent/api/sessions', {})).json();
+  await f.post(`/agent/api/sessions/${session.id}/messages`, { text: 'Prepare this selected flight' });
+  const capability = { Authorization: 'Bearer fixture-capability', Origin: null };
+  const payload = { sessionId: session.id };
+  assert.equal((await f.post('/agent/internal/travel/search', { ...payload, args: { origin: 'LHR', destination: 'CDG', date: '2026-11-30' } }, capability)).status, 200);
+  assert.equal((await f.post('/agent/internal/travel/prepare', { ...payload, args: { offerId: 'offer-1', firstName: 'Alex', lastName: 'Demo' } }, capability)).status, 200);
+  const secondSearch = await f.post('/agent/internal/travel/search', { ...payload, args: { origin: 'LHR', destination: 'CDG', date: '2026-12-01' } }, capability);
+  assert.equal(secondSearch.status, 409);
+  assert.match((await secondSearch.json()).error, /review was just prepared/i);
+  assert.equal(f.searchCount(), 1);
+  assert.equal(f.currentPending().id, 'prepared-review');
+});
+
+test('a selected offer is locked against re-search and must be the offer prepared', async t => {
+  const f = await fixture(t, { initialOffers: [{ id: 'offer-1', flightId: 'flight-1', fareId: 'fare-1' }] });
+  const session = await (await f.post('/agent/api/sessions', {})).json();
+  const selection = await f.post(`/agent/api/sessions/${session.id}/messages`, {
+    text: 'I would like to review offer offer-1. Ask for first and last name if needed. Do not search again; prepare this exact offer only. Do not book it yet.',
+    offerId: 'offer-1',
+  });
+  assert.equal(selection.status, 202);
+  const capability = { Authorization: 'Bearer fixture-capability', Origin: null };
+  const payload = { sessionId: session.id };
+  const search = await f.post('/agent/internal/travel/search', { ...payload, args: { origin: 'CDG', destination: 'LHR', date: '2026-11-30' } }, capability);
+  assert.equal(search.status, 409);
+  assert.match((await search.json()).error, /selected a flight/i);
+  assert.equal(f.searchCount(), 0);
+  const wrong = await f.post('/agent/internal/travel/prepare', { ...payload, args: { offerId: 'offer-2', firstName: 'Alex', lastName: 'Demo' } }, capability);
+  assert.equal(wrong.status, 409);
+  const prepared = await f.post('/agent/internal/travel/prepare', { ...payload, args: { offerId: 'offer-1', firstName: 'Alex', lastName: 'Demo' } }, capability);
+  assert.equal(prepared.status, 200);
+  assert.equal(f.currentPending().offer.id, 'offer-1');
 });
 
 test('traveler confirmation above $1,000 waits for manager approval without another model turn', async t => {

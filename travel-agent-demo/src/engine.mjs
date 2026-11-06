@@ -22,7 +22,7 @@ const SYSTEM_PROMPT = `You are a concise travel reservation assistant, not a cod
 function systemPromptForDate(now) {
   const date = now instanceof Date ? now : new Date(now);
   const today = Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-  return `${SYSTEM_PROMPT}\nCurrent date (UTC): ${today}. Resolve yearless month/day dates using this date.`;
+  return `${SYSTEM_PROMPT}\nCurrent date (UTC): ${today}. Resolve yearless month/day dates using this date. Search at most once per user travel request; reuse the latest matching search results when the user selects an option or supplies their name. If the app supplies a selected offerId, prepare that exact offer after collecting any missing name; a name reply is never a reason to search again. If no matching search result exists yet, search once when origin, destination, and date are known. After travel_prepare succeeds, stop using tools and say briefly that the review is ready in the trip panel.`;
 }
 
 export function configuredProviders(env = process.env) {
@@ -71,7 +71,8 @@ function loadState(path) {
   if (!Array.isArray(value) || value.length > 100) throw new Error('Invalid local model session file; refusing to discard its contents.');
   for (const session of value) {
     if (!SESSION_ID.test(session.id ?? '') || !PROVIDER_INFO[session.provider] || !safeModelId(session.model)
-      || !Array.isArray(session.messages) || !Array.isArray(session.history)) throw new Error('Invalid local model session entry; refusing to reset it.');
+      || !Array.isArray(session.messages) || !Array.isArray(session.history)
+      || (session.selectedOfferId !== undefined && session.selectedOfferId !== null && (typeof session.selectedOfferId !== 'string' || !session.selectedOfferId || session.selectedOfferId.length > 200))) throw new Error('Invalid local model session entry; refusing to reset it.');
   }
   return value;
 }
@@ -119,7 +120,7 @@ export class VercelAIEngine {
 
   persist() {
     mkdirSync(dirname(this.sessionFilePath), { recursive: true, mode: 0o700 });
-    const snapshot = [...this.sessions.values()].map(({ id, provider, model, history, messages, turnCount }) => ({ id, provider, model, history, messages, turnCount }));
+    const snapshot = [...this.sessions.values()].map(({ id, provider, model, history, messages, turnCount, selectedOfferId }) => ({ id, provider, model, history, messages, turnCount, selectedOfferId }));
     const tmp = `${this.sessionFilePath}.tmp`;
     writeFileSync(tmp, JSON.stringify(snapshot), { mode: 0o600 });
     renameSync(tmp, this.sessionFilePath);
@@ -131,7 +132,7 @@ export class VercelAIEngine {
       const selection = this.resolveSelection(body?.provider, body?.model);
       if (this.sessions.size >= 100) throw new Error('Local model session storage is full.');
       const id = `ses_${randomUUID()}`;
-      this.sessions.set(id, { id, ...selection, history: [], messages: [], turnCount: 0, busy: false, task: null, controller: null });
+      this.sessions.set(id, { id, ...selection, history: [], messages: [], turnCount: 0, selectedOfferId: null, busy: false, task: null, controller: null });
       this.persist();
       return { id, ...selection };
     }
@@ -196,13 +197,24 @@ export class VercelAIEngine {
     if (session.busy || this.stopping) throw new Error('This conversation is already processing a turn.');
     const prompt = body?.parts?.find(part => part.type === 'text')?.text;
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 4000) throw new Error('Enter a message of 1–4000 characters.');
+    if (body.selectedOfferId !== undefined) {
+      if (body.selectedOfferId !== null && (typeof body.selectedOfferId !== 'string' || !body.selectedOfferId || body.selectedOfferId.length > 200)) throw new Error('The selected flight offer is invalid.');
+      session.selectedOfferId = body.selectedOfferId;
+    }
     const controller = new AbortController();
+    const tools = this.tools(id, controller.signal);
     const call = this.generateText({
       model: this.languageModel(session.provider, session.model),
       system: systemPromptForDate(this.now()),
       messages: [...session.history, { role: 'user', content: prompt.trim() }],
-      tools: this.tools(id, controller.signal),
-      stopWhen: stepCountIs(10),
+      tools,
+      activeTools: session.selectedOfferId
+        ? Object.keys(tools).filter(name => name !== 'travel_search')
+        : Object.keys(tools),
+      stopWhen: [
+        stepCountIs(10),
+        ({ steps }) => steps.some(step => step.toolResults?.some(result => result.toolName === 'travel_prepare')),
+      ],
       maxOutputTokens: 1024,
       abortSignal: controller.signal,
       timeout: typeof timeout === 'number' ? { totalMs: timeout } : timeout,
@@ -216,8 +228,11 @@ export class VercelAIEngine {
     try {
       const result = await call;
       session.history.push({ role: 'user', content: prompt.trim() }, ...(result.response?.messages ?? []));
+      const prepared = (result.steps ?? []).some(step => step.toolResults?.some(toolResult => toolResult.toolName === 'travel_prepare'));
+      if (prepared) session.selectedOfferId = null;
       const toolParts = (result.steps ?? []).flatMap(step => (step.toolCalls ?? []).map(toolCall => ({ type: 'tool', tool: toolCall.toolName, state: { status: 'completed' } })));
-      if (result.text) toolParts.push({ type: 'text', text: result.text });
+      const finalText = prepared ? 'The review is ready in the trip panel.' : result.text;
+      if (finalText) toolParts.push({ type: 'text', text: finalText });
       session.messages.push({ info: { id: randomUUID(), role: 'assistant' }, parts: toolParts });
       return { info: { role: 'assistant' }, parts: [] };
     } catch (error) {

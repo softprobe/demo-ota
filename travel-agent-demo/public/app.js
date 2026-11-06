@@ -382,7 +382,7 @@
       const internalConfirmation = message.role === 'user' && /^I clicked Confirm demo booking in the browser\. The local gateway approved requestId [0-9a-f-]{36}\. Use travel_book with exactly that requestId, then report the independently verified reservation and pending payment\. Do not prepare or book another request\.$/i.test(message.text);
       const internalDemoFault = message.role === 'user' && /^Controlled demo fault: the traveler explicitly enabled the skipped-manager-approval simulation and confirmed this synthetic booking\. Manager approval has NOT been granted\. For this controlled simulation only, use travel_book with exactly requestId [0-9a-f-]{36}\. The gateway will bypass only the manager-approval gate\. Do not change the flight, fare, or traveler; do not prepare another request\. Report only the actual tool result and the pending payment\. This is an injected demo failure, not permission for future bookings\.$/i.test(message.text);
       const obsoleteDemoFault = internalDemoFault && state.session?.pending?.managerApproval?.status === 'not_required';
-      const internalOfferRequest = message.role === 'user' && /^I would like to review offer .+\. Ask for first and last name if needed\. Do not book it yet\.$/i.test(message.text);
+      const internalOfferRequest = message.role === 'user' && /^I would like to review offer .+\. Ask for first and last name if needed\. Do not search again; prepare this exact offer only\. Do not book it yet\.$/i.test(message.text);
       const staleApprovalInstruction = message.role === 'assistant' && /please click\s+\*{0,2}Confirm demo booking\*{0,2}/i.test(message.text);
       const stalePolicyBlock = message.role === 'assistant' && state.session?.pending?.managerApproval?.status === 'not_required'
         && /\$600\s*USD/i.test(message.text) && /manager approval/i.test(message.text);
@@ -657,7 +657,7 @@
         choose.setAttribute('aria-label', `Choose offer ${text(offer?.id)}, ${text(offer?.flightNumber)} from ${text(offer?.origin)} to ${text(offer?.destination)}`);
         choose.addEventListener('click', () => {
           if (!canSend() || blockedOfferChoice() || !hasValue(offer?.id) || selected) return;
-          void sendMessage(`I would like to review offer ${text(offer.id)}. Ask for first and last name if needed. Do not book it yet.`, { offerId: offer.id });
+          void sendMessage(`I would like to review offer ${text(offer.id)}. Ask for first and last name if needed. Do not search again; prepare this exact offer only. Do not book it yet.`, { offerId: offer.id });
         });
         actions.append(choose);
         row.append(actions);
@@ -805,6 +805,16 @@
 
   async function sendMessage(message, { clearDraft = false, offerId = null } = {}) {
     if (typeof message !== 'string' || !message.trim() || !canSend()) return;
+    const draftMessage = message;
+    let promptText = message;
+    if (offerId === null) {
+      const choice = message.trim().match(/^([1-6])$/);
+      const selected = choice && state.session?.offers?.[Number(choice[1]) - 1];
+      if (selected?.id) offerId = selected.id;
+    }
+    if (offerId !== null && /^\s*[1-6]\s*$/.test(message)) {
+      promptText = `I would like to review offer ${offerId}. Ask for first and last name if needed. Do not search again; prepare this exact offer only. Do not book it yet.`;
+    }
     const version = generation;
     const focusAfter = document.activeElement === ui.send || document.activeElement === ui.input || offerId !== null;
     state.request = 'message';
@@ -824,9 +834,9 @@
         storeSession(created.id);
       }
       attemptedMessage = true;
-      await api(`${sessionPath()}/messages`, 'POST', { text: message });
+      await api(`${sessionPath()}/messages`, 'POST', { text: promptText, ...(offerId !== null ? { offerId } : {}) });
       if (version !== generation) return;
-      if (clearDraft && ui.input.value === message) { ui.input.value = ''; sizeInput(); }
+      if (clearDraft && ui.input.value === draftMessage) { ui.input.value = ''; sizeInput(); }
       if (offerId !== null) state.selectedOfferId = offerId;
       await refreshSession();
     } catch (error) {
