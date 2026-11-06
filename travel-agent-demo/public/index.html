@@ -20,6 +20,12 @@
         <span class="environment">Local demo</span>
       </div>
       <div class="topbar-actions">
+        <label class="model-choice">Provider
+          <select id="model-provider" aria-label="Model provider" disabled></select>
+        </label>
+        <label class="model-choice model-choice--id">Model ID
+          <input id="model-id" type="text" value="" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Model ID" disabled>
+        </label>
         <details class="connection-details">
           <summary>
             <span id="connection-dot" class="connection-dot" aria-hidden="true"></span>
@@ -28,7 +34,7 @@
           <div class="connection-popover">
             <h2>Local connection</h2>
             <dl class="detail-list">
-              <div><dt>OpenCode</dt><dd id="opencode-status">Not checked</dd></div>
+              <div><dt>Agent runtime</dt><dd id="runtime-status">Not checked</dd></div>
               <div><dt>Travel service</dt><dd id="travel-status">Not checked</dd></div>
               <div><dt>Model</dt><dd id="model-status">Not returned</dd></div>
               <div><dt>Environment</dt><dd id="environment-status">Not checked</dd></div>

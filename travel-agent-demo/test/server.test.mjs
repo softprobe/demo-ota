@@ -27,7 +27,9 @@ async function fixture(t, { travel, pending = null } = {}) {
   };
   let created = 0;
   const modelPrompts = [];
-  const engine = { async request(path, request = {}) {
+  const engine = { availableProviders() { return [{ id: 'google', label: 'Google Gemini', defaultModel: 'gemini-3.8-flash' }]; },
+    resolveSelection(provider, model) { return { provider: provider ?? 'google', model: model ?? 'gemini-3.8-flash' }; },
+    async request(path, request = {}) {
     if (path === '/global/health') return { healthy: true, version: '1.18.30' };
     if (path === '/session') return { id: `ses_fixture_${++created}` };
     if (path.endsWith('/message') && request.method === 'POST') { modelPrompts.push(request.body); return new Promise(() => {}); }
@@ -76,11 +78,16 @@ test('agent API uses the /agent prefix and rejects cross-origin writes', async t
   const ready = await status.json();
   assert.equal(ready.ready, true);
   assert.equal(ready.environment, 'local synthetic demo');
+  assert.deepEqual(ready.providers.map(provider => provider.id), ['google']);
+  assert.equal(ready.defaultModel, 'gemini-3.8-flash');
   const rejected = await f.post('/agent/api/sessions', {}, { Origin: 'https://example.invalid' });
   assert.equal(rejected.status, 403);
-  const created = await f.post('/agent/api/sessions', {});
+  const created = await f.post('/agent/api/sessions', { provider: 'google', model: 'gemini-3.8-flash' });
   assert.equal(created.status, 201);
-  assert.match((await created.json()).id, /^ses_fixture_/);
+  const session = await created.json();
+  assert.match(session.id, /^ses_fixture_/);
+  assert.equal(session.provider, 'google');
+  assert.equal(session.model, 'gemini-3.8-flash');
 });
 
 test('agent travel tools need the local capability only', async t => {

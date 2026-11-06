@@ -6,7 +6,8 @@
     connection: byId('connection-label'), dot: byId('connection-dot'),
     gateway: byId('gateway-banner'), gatewayMessage: byId('gateway-message'),
     retryConnection: byId('retry-connection'), newConversation: byId('new-conversation'),
-    opencode: byId('opencode-status'), travel: byId('travel-status'),
+    provider: byId('model-provider'), modelInput: byId('model-id'),
+    runtime: byId('runtime-status'), travel: byId('travel-status'),
     model: byId('model-status'), environment: byId('environment-status'),
     conversationState: byId('conversation-state'), tripLink: byId('trip-link'),
     workspace: byId('workspace'), conversationHeader: byId('conversation-header'),
@@ -32,10 +33,13 @@
   };
 
   const SESSION_KEY = 'demo-ota.travel.sessionId';
+  const MODEL_PREF_KEY = 'demo-ota.travel.model';
   const API_BASE = window.location.pathname === '/agent' || window.location.pathname.startsWith('/agent/') ? '/agent' : '';
+  const savedModel = readStoredModel();
   const savedSession = readStoredSession();
   const state = {
     status: null, statusChecking: false, statusError: '',
+    modelProvider: savedModel?.provider ?? '', modelId: savedModel?.model ?? '',
     sessionId: savedSession, session: null, restoring: Boolean(savedSession),
     syncing: false, request: '', recoveryNeeded: false,
     error: '', errorKind: '', dismissedServerError: '', notice: '',
@@ -122,6 +126,52 @@
     return text(value, 'Not checked');
   }
 
+  function readStoredModel() {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(MODEL_PREF_KEY) ?? 'null');
+      return value && typeof value.provider === 'string' && typeof value.model === 'string' ? value : null;
+    } catch { return null; }
+  }
+
+  function storeModel() {
+    try { window.localStorage.setItem(MODEL_PREF_KEY, JSON.stringify({ provider: state.modelProvider, model: state.modelId })); }
+    catch { /* model preferences are optional and never contain credentials */ }
+  }
+
+  function renderModelChoice() {
+    const providers = Array.isArray(state.status?.providers) ? state.status.providers : [];
+    const current = state.session?.provider;
+    const available = providers.slice();
+    if (current && !available.some(item => item.id === current)) available.push({ id: current, label: current });
+    const signature = available.map(item => `${item.id}:${item.label}`).join('|');
+    if (ui.provider.dataset.options !== signature) {
+      ui.provider.replaceChildren(...available.map(item => {
+        const option = document.createElement('option');
+        option.value = item.id; option.textContent = item.label; option.dataset.defaultModel = item.defaultModel ?? '';
+        return option;
+      }));
+      ui.provider.dataset.options = signature;
+    }
+    if (state.session?.provider) {
+      state.modelProvider = state.session.provider;
+      state.modelId = state.session.model ?? '';
+    } else if (available.length) {
+      if (!available.some(item => item.id === state.modelProvider)) {
+        state.modelProvider = state.status?.defaultProvider || available[0].id;
+        state.modelId = '';
+      }
+      const selected = available.find(item => item.id === state.modelProvider) ?? available[0];
+      if (!state.modelId) state.modelId = selected.defaultModel ?? state.status?.defaultModel ?? '';
+    } else {
+      state.modelProvider = ''; state.modelId = '';
+    }
+    ui.provider.value = state.modelProvider;
+    ui.modelInput.value = state.modelId;
+    const locked = Boolean(state.sessionId) || providers.length === 0;
+    ui.provider.disabled = locked;
+    ui.modelInput.disabled = locked;
+  }
+
 
   function renderStatus() {
     const ready = state.status?.ready === true && !state.statusError;
@@ -130,11 +180,14 @@
     ui.gateway.hidden = ready;
     setText(ui.gatewayMessage, state.statusError
       ? `${state.statusError} Retrying automatically.`
-      : state.status ? 'Waiting for OpenCode and the travel service. Retrying automatically.' : 'Connecting to the local gateway…');
+      : state.status?.providers?.length === 0 ? 'Configure a model provider key on the server to start the agent.'
+        : state.status ? 'Waiting for the Vercel AI runtime and travel service. Retrying automatically.' : 'Connecting to the local gateway…');
     ui.retryConnection.disabled = state.statusChecking;
-    setText(ui.opencode, serviceLabel(state.status?.opencode));
+    setText(ui.runtime, serviceLabel(state.status?.runtime));
     setText(ui.travel, serviceLabel(state.status?.travel));
-    setText(ui.model, text(state.status?.model));
+    renderModelChoice();
+    const activeModel = state.session?.provider ? `${state.session.provider}/${state.session.model}` : state.status?.model;
+    setText(ui.model, text(activeModel));
     setText(ui.environment, text(state.status?.environment, 'Not checked'));
   }
 
@@ -689,7 +742,7 @@
     let attemptedMessage = false;
     try {
       if (!state.sessionId) {
-        const created = await api('/api/sessions', 'POST', {});
+        const created = await api('/api/sessions', 'POST', { provider: state.modelProvider, model: state.modelId });
         if (!created || typeof created.id !== 'string' || !created.id) throw new ApiError('The gateway did not return a valid session ID.');
         if (version !== generation) return;
         state.sessionId = created.id;
@@ -773,6 +826,19 @@
   }
 
   ui.retryConnection.addEventListener('click', checkStatus);
+  ui.provider.addEventListener('change', () => {
+    const selected = state.status?.providers?.find(item => item.id === ui.provider.value);
+    state.modelProvider = ui.provider.value;
+    state.modelId = selected?.defaultModel ?? '';
+    storeModel();
+    render();
+  });
+  ui.modelInput.addEventListener('change', () => {
+    state.modelId = ui.modelInput.value.trim();
+    storeModel();
+    render();
+  });
+  ui.modelInput.addEventListener('input', () => { state.modelId = ui.modelInput.value; storeModel(); renderControls(); });
   ui.newConversation.addEventListener('click', newConversation);
   ui.retrySession.addEventListener('click', () => { void refreshSession(); });
   ui.dismissError.addEventListener('click', () => {

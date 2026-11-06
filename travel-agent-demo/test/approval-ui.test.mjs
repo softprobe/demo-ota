@@ -9,7 +9,7 @@ const POLICY = 'Flights costing more than $600 USD require manager approval befo
 
 function sessionFixture() {
   return {
-    id: 'fixture-session', busy: false,
+    id: 'fixture-session', provider: 'google', model: 'gemini-3.8-flash', busy: false,
     messages: [{ id: 'message-1', role: 'assistant', text: 'Review this synthetic traveler and flight.' }],
     offers: [], booking: null,
     travelPolicy: { policyId: 'policy-travel-approval', ruleId: 'TRV-01', policyVersion: '1.0', threshold: 600, currency: 'USD', text: POLICY },
@@ -53,7 +53,7 @@ async function mount(t, { session = sessionFixture(), approve, cancel } = {}) {
     const body = options.body ? JSON.parse(options.body) : undefined;
     calls.push({ path, method, body });
     let data;
-    if (path === '/api/status' && method === 'GET') data = { ready: true, opencode: true, travel: true };
+    if (path === '/api/status' && method === 'GET') data = { ready: true, runtime: true, travel: true, providers: [{ id: 'google', label: 'Google Gemini', defaultModel: 'gemini-3.8-flash' }], defaultProvider: 'google', defaultModel: 'gemini-3.8-flash' };
     else if (path === `/api/sessions/${session.id}` && method === 'GET') data = structuredClone(session);
     else if (path === `/api/sessions/${session.id}/approve` && method === 'POST' && approve) data = approve(body, session);
     else if (path === `/api/sessions/${session.id}/cancel-booking` && method === 'POST' && cancel) data = cancel(body, session);

@@ -48,6 +48,10 @@ ol, ul { margin: 0; padding: 0; list-style: none; }
 .topbar { min-height: 64px; padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .workspace-name, .topbar-actions { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .workspace-name { font-size: 13px; }
+.model-choice { display: grid; gap: 3px; color: var(--muted); font-size: 9px; line-height: 1.2; white-space: nowrap; }
+.model-choice select, .model-choice input { width: 132px; min-height: 28px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--white); color: var(--ink); font: inherit; font-size: 11px; }
+.model-choice--id input { width: 155px; font-family: var(--mono); }
+.model-choice :disabled { color: var(--muted); opacity: .7; }
 .product-name { font-weight: 600; letter-spacing: -.3px; }
 .name-divider { color: #96938a; }
 .environment { font-family: var(--mono); font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; color: var(--muted); white-space: nowrap; }
@@ -215,6 +219,8 @@ ol, ul { margin: 0; padding: 0; list-style: none; }
   .topbar { padding: 12px 16px; flex-wrap: wrap; gap: 8px 16px; }
   .workspace-name { gap: 10px; flex-wrap: wrap; }
   .topbar-actions { width: 100%; justify-content: space-between; }
+  .model-choice { flex: 1; }
+  .model-choice select, .model-choice input, .model-choice--id input { width: 100%; min-height: 36px; }
   .topbar-actions .button { min-height: 44px; }
   .connection-details summary { min-height: 44px; }
   .connection-popover { right: auto; left: 0; }

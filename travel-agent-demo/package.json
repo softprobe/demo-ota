@@ -3,9 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.30"
+    "@ai-sdk/anthropic": "^4.0.97",
+    "@ai-sdk/google": "^4.0.112",
+    "@ai-sdk/openai": "^4.0.109",
+    "@ai-sdk/openai-compatible": "^3.0.85",
+    "ai": "^7.0.163",
+    "zod": "^4.6.7"
   },
   "scripts": {
     "test": "node --test --test-concurrency=4 test/*.test.mjs",

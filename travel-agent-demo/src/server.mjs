@@ -6,7 +6,6 @@ import { guardBrowserRequest, checkInternalToken, readJSON, publicError } from '
 import { TravelAPI } from './travel-api.mjs';
 import { TRAVEL_POLICY } from './travel-policy.mjs';
 
-const MODEL = { providerID: 'openai', modelID: 'gpt-4.1-mini' };
 const STATIC = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'] };
 const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'host']);
 
@@ -86,7 +85,7 @@ export function createGateway({ root, engine, store, internalToken, travel = new
     record.generation = (record.generation ?? 0) + 1;
     const generation = record.generation;
     persist();
-    void engine.request(`/session/${encodeURIComponent(record.id)}/message`, { method: 'POST', body: { agent: 'travel', model: MODEL, parts: [{ type: 'text', text }] } })
+    void engine.request(`/session/${encodeURIComponent(record.id)}/message`, { method: 'POST', body: { parts: [{ type: 'text', text }] } })
       .then(result => {
         if (record.generation !== generation) return;
         const error = result?.info?.error;
@@ -168,23 +167,29 @@ export function createGateway({ root, engine, store, internalToken, travel = new
         res.writeHead(200, { 'Content-Type': contentType }); res.end(body); return;
       }
       if (req.method === 'GET' && route === '/api/status') {
-        const [oc, ota] = await Promise.allSettled([
+        const [runtimeResult, ota] = await Promise.allSettled([
           engine.request('/global/health', { timeout: 2000 }),
           fetch(`${travel.baseUrl}/`, { signal: AbortSignal.timeout(2000), redirect: 'error' }).then(response => response.ok),
         ]);
-        const opencode = oc.status === 'fulfilled' && Boolean(oc.value?.healthy);
+        const runtimeReady = runtimeResult.status === 'fulfilled' && Boolean(runtimeResult.value?.healthy);
         const travelReady = ota.status === 'fulfilled' && ota.value;
+        const providers = typeof engine.availableProviders === 'function' ? engine.availableProviders() : [];
+        const defaults = typeof engine.resolveSelection === 'function' ? (() => { try { return engine.resolveSelection(); } catch { return { provider: null, model: '' }; } })() : { provider: null, model: '' };
+        const providerConfigured = providers.length > 0 || typeof engine.availableProviders !== 'function';
         const date = new Date(); date.setDate(date.getDate() + 7);
-        return reply(res, 200, { ready: opencode && travelReady, opencode, travel: travelReady, model: 'openai/gpt-4.1-mini', environment: 'local synthetic demo', defaultDate: date.toISOString().slice(0, 10), conversationLimit: maxConversations, conversationsUsed: [...sessions.values()].filter(item => item.used).length });
+        return reply(res, 200, { ready: runtimeReady && providerConfigured && travelReady, runtime: runtimeReady, providers, defaultProvider: defaults.provider, defaultModel: defaults.model, model: defaults.provider ? `${defaults.provider}/${defaults.model}` : 'No provider configured', travel: travelReady, environment: 'local synthetic demo', defaultDate: date.toISOString().slice(0, 10), conversationLimit: maxConversations, conversationsUsed: [...sessions.values()].filter(item => item.used).length });
       }
       if (req.method === 'POST' && route === '/api/sessions') {
-        await readJSON(req, []);
+        const requested = await readJSON(req, ['provider', 'model']);
         if (maxConversations !== null && sessions.size >= 100) throw publicError('Local conversation storage is full.', 409);
-        const created = await engine.request('/session', { method: 'POST', body: { title: 'Travel demo', agent: 'travel', model: { id: 'gpt-4.1-mini', providerID: 'openai' }, permission: [{ permission: '*', pattern: '*', action: 'deny' }, { permission: 'travel_*', pattern: '*', action: 'allow' }] } });
-        if (!/^ses_[A-Za-z0-9_-]+$/.test(created?.id ?? '')) throw new Error('OpenCode did not return a session ID.');
-        const record = { id: created.id, used: false, turnCount: 0, busy: false, stopping: false, generation: 0, lastError: null, createdAt: new Date().toISOString() };
+        let selection;
+        try { selection = typeof engine.resolveSelection === 'function' ? engine.resolveSelection(requested.provider, requested.model) : { provider: requested.provider ?? null, model: requested.model ?? '' }; }
+        catch (error) { throw publicError(error.message); }
+        const created = await engine.request('/session', { method: 'POST', body: selection });
+        if (!/^ses_[A-Za-z0-9_-]+$/.test(created?.id ?? '')) throw new Error('The local model runtime did not return a valid session ID.');
+        const record = { id: created.id, provider: created.provider ?? selection.provider, model: created.model ?? selection.model, used: false, turnCount: 0, busy: false, stopping: false, generation: 0, lastError: null, createdAt: new Date().toISOString() };
         sessions.set(created.id, record); persist();
-        return reply(res, 201, { id: created.id });
+        return reply(res, 201, { id: created.id, provider: record.provider, model: record.model });
       }
       const match = route.match(/^\/api\/sessions\/(ses_[A-Za-z0-9_-]+)(?:\/(messages|approve|cancel-booking|abort))?$/);
       if (!match) throw publicError('Not found.', 404);
@@ -192,14 +197,14 @@ export function createGateway({ root, engine, store, internalToken, travel = new
       const action = match[2];
       if (req.method === 'GET' && !action) {
         const raw = await engine.request(`/session/${encodeURIComponent(record.id)}/message`, { timeout: 5000 });
-        if (!Array.isArray(raw)) throw new Error('OpenCode returned an unexpected message list.');
+        if (!Array.isArray(raw)) throw new Error('The local model runtime returned an unexpected message list.');
         const messages = raw.map(message => ({
           id: message.info?.id,
           role: message.info?.role,
           text: (message.parts ?? []).filter(part => part.type === 'text' && !part.synthetic).map(part => part.text ?? '').join('\n'),
           tools: (message.parts ?? []).filter(part => part.type === 'tool').map(part => ({ name: part.tool, status: part.state?.status ?? 'pending' })),
         })).filter(message => ['user', 'assistant'].includes(message.role));
-        return reply(res, 200, { id: record.id, messages, busy: record.busy, pending: store.getPending(record.id), offers: store.getOffers(record.id), booking: store.getBooking(record.id), travelPolicy: TRAVEL_POLICY, lastError: record.lastError });
+        return reply(res, 200, { id: record.id, provider: record.provider, model: record.model, messages, busy: record.busy, pending: store.getPending(record.id), offers: store.getOffers(record.id), booking: store.getBooking(record.id), travelPolicy: TRAVEL_POLICY, lastError: record.lastError });
       }
       if (req.method !== 'POST') throw publicError('Method not allowed.', 405);
       if (action === 'messages') {

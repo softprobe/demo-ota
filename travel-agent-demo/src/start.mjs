@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { OpenCodeEngine } from './engine.mjs';
+import { VercelAIEngine } from './engine.mjs';
 import { BookingStore } from './booking-store.mjs';
 import { createGateway } from './server.mjs';
 
@@ -19,10 +19,8 @@ if (existsSync(lockPath)) {
   unlinkSync(lockPath);
 }
 writeFileSync(lockPath, String(process.pid), { flag: 'wx', mode: 0o600 });
-const password = randomBytes(32).toString('hex');
 const internalToken = randomBytes(32).toString('hex');
-writeFileSync(join(runtime, 'engine-access.json'), JSON.stringify({ password, internalToken }), { mode: 0o600 });
-const engine = new OpenCodeEngine({ root, password, internalToken });
+const engine = new VercelAIEngine({ root, internalToken });
 let server;
 let stopping = false;
 let stopPromise;
@@ -52,16 +50,12 @@ async function start() {
   const store = new BookingStore({ filePath: join(runtime, 'bookings.json') });
   const health = await engine.start();
   if (stopping) return;
-  if (health.version !== '1.18.30') throw new Error(`OpenCode ${health.version} requires re-verification; this demo was checked on 1.18.30.`);
-  const config = await engine.request('/config', { timeout: 10_000 });
-  if (stopping) return;
-  if (config.model !== 'openai/gpt-4.1-mini' || config.plugin?.length !== 1 || !config.plugin[0].endsWith('/.opencode/plugins/travel-safety.ts') || config.permission?.['*'] !== 'deny' || config.permission?.['travel_*'] !== 'allow') throw new Error('The isolated travel-agent configuration did not match the expected safety boundaries.');
   server = createGateway({ root, engine, store, internalToken, maxConversations: null, basePath: '/agent' });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(4310, '127.0.0.1', resolve); });
   if (stopping) return;
   console.log('Travel OTA web app: http://127.0.0.1:4310/');
   console.log('Travel agent: http://127.0.0.1:4310/agent');
-  console.log('Synthetic demo only. Model use is limited per turn; bookings remain unpaid and require explicit confirmation.');
+  console.log(`Synthetic demo only. Configured model providers: ${health.providers.map(provider => provider.label).join(', ') || 'none'}. Bookings remain unpaid and require explicit confirmation.`);
 }
 try {
   await start();

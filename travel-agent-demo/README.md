@@ -1,18 +1,29 @@
 # demo-ota travel agent
 
-A local browser chat for synthetic flight search and booking, built with OpenCode 1.18.30. It runs beside this repository’s original OTA web app: the original stays at `/`, and the agent is served at `/agent` on the same local origin. Reservations remain unpaid and no ticket is issued.
+A local browser chat for synthetic flight search and booking, built with the Vercel AI SDK. It runs beside this repository’s original OTA web app: the original stays at `/`, and the agent is served at `/agent` on the same local origin. Reservations remain unpaid and no ticket is issued.
 
 ## Start
 
-Requirements: Node.js 22+, npm, Docker, and OpenCode 1.18.30 configured with a model provider. The agent process uses an isolated OpenCode config and keeps the existing local authentication store.
+Requirements: Node.js 22+, npm, Docker, and at least one model provider configured in the server environment. API keys stay on the server and are never sent to the browser. The model selector lists configured providers; enter a model ID supported by the selected provider.
 
 ```sh
 cd travel-agent-demo
 npm ci --ignore-scripts
+export GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-key
 npm run demo
 ```
 
-Open [http://127.0.0.1:4310/](http://127.0.0.1:4310/) for the original OTA web app or [http://127.0.0.1:4310/agent](http://127.0.0.1:4310/agent) for the agent. `npm run demo` starts the synthetic OTA and airline services in Docker, then launches the local agent gateway and OpenCode server. The app binds to loopback only.
+Open [http://127.0.0.1:4310/](http://127.0.0.1:4310/) for the original OTA web app or [http://127.0.0.1:4310/agent](http://127.0.0.1:4310/agent) for the agent. `npm run demo` starts the synthetic OTA and airline services in Docker, then launches the local gateway. The app binds to loopback only.
+
+Provider environment variables:
+
+- `GOOGLE_GENERATIVE_AI_API_KEY` for Gemini.
+- `OPENAI_API_KEY` for OpenAI.
+- `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` for Anthropic.
+- `AI_GATEWAY_API_KEY` (or Vercel's `VERCEL_OIDC_TOKEN`) for Vercel AI Gateway model IDs in `provider/model` form.
+- `AI_COMPATIBLE_BASE_URL` and optionally `AI_COMPATIBLE_API_KEY` for an OpenAI-compatible endpoint.
+
+You can set `TRAVEL_PROVIDER` and `TRAVEL_MODEL` to choose the initial selection. The browser can change the provider and model for each new conversation. No provider key is stored in browser storage.
 
 ## Try the agent
 
