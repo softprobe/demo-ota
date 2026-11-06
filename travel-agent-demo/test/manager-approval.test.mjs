@@ -79,7 +79,7 @@ test('USD boundary and unsupported currencies fail closed without fabricating co
   }
 });
 
-test('saved requests retain their original approval policy while new requests use the raised limit', async t => {
+test('saved unsubmitted reviews migrate to the raised limit while new requests use it', async t => {
   const scratch = join(homedir(), '.hermes/cache/scratch');
   mkdirSync(scratch, { recursive: true });
   const root = mkdtempSync(join(scratch, 'manager-policy-version-'));
@@ -95,10 +95,12 @@ test('saved requests retain their original approval policy while new requests us
   writeFileSync(filePath, JSON.stringify(snapshot));
 
   const restored = new BookingStore({ filePath });
-  assert.equal(restored.getPending('ses_policy').managerApproval.policyVersion, '1.0');
-  assert.equal(restored.getPending('ses_policy').managerApproval.status, 'pending');
-  assert.equal(restored.getPending('ses_policy').managerApproval.threshold, 600);
-  await assert.rejects(restored.submit('ses_policy', pending.id, async () => booking(pending)), /manager approval/i);
+  const migrated = restored.getPending('ses_policy');
+  assert.equal(migrated.managerApproval.policyVersion, '1.1');
+  assert.equal(migrated.managerApproval.threshold, 1000);
+  assert.equal(migrated.managerApproval.status, 'not_required');
+  assert.equal(migrated.status, 'awaiting_approval', 'the traveler confirms again under the raised policy');
+  assert.equal(restored.approve('ses_policy', pending.id).managerApproval.status, 'not_required');
 
   restored.setOffers('ses_new', [{ ...offer, total: 750 }]);
   const current = restored.prepare('ses_new', { offerId: offer.id, passenger });

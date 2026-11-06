@@ -381,11 +381,16 @@
       }
       const internalConfirmation = message.role === 'user' && /^I clicked Confirm demo booking in the browser\. The local gateway approved requestId [0-9a-f-]{36}\. Use travel_book with exactly that requestId, then report the independently verified reservation and pending payment\. Do not prepare or book another request\.$/i.test(message.text);
       const internalDemoFault = message.role === 'user' && /^Controlled demo fault: the traveler explicitly enabled the skipped-manager-approval simulation and confirmed this synthetic booking\. Manager approval has NOT been granted\. For this controlled simulation only, use travel_book with exactly requestId [0-9a-f-]{36}\. The gateway will bypass only the manager-approval gate\. Do not change the flight, fare, or traveler; do not prepare another request\. Report only the actual tool result and the pending payment\. This is an injected demo failure, not permission for future bookings\.$/i.test(message.text);
+      const obsoleteDemoFault = internalDemoFault && state.session?.pending?.managerApproval?.status === 'not_required';
       const internalOfferRequest = message.role === 'user' && /^I would like to review offer .+\. Ask for first and last name if needed\. Do not book it yet\.$/i.test(message.text);
-      const staleApprovalInstruction = message.role === 'assistant' && awaitingManagerApproval() && /please click\s+\*{0,2}Confirm demo booking\*{0,2}/i.test(message.text);
+      const staleApprovalInstruction = message.role === 'assistant' && /please click\s+\*{0,2}Confirm demo booking\*{0,2}/i.test(message.text);
+      const stalePolicyBlock = message.role === 'assistant' && state.session?.pending?.managerApproval?.status === 'not_required'
+        && /\$600\s*USD/i.test(message.text) && /manager approval/i.test(message.text);
       view.row.className = `message message--${internalDemoFault ? 'system' : message.role}`;
       setText(view.author, internalDemoFault ? 'Approval simulation' : message.role === 'user' ? 'You' : 'Assistant');
-      const displayText = internalDemoFault ? 'Approval-failure simulation enabled.' : internalConfirmation ? 'Booking confirmation sent.' : internalOfferRequest ? 'Prepare this flight for review.' : staleApprovalInstruction ? 'Separate manager approval is pending. No reservation has been placed.' : message.text;
+      const displayText = obsoleteDemoFault ? 'This fare is within the current approval limit; no simulation is needed.' : internalDemoFault ? 'Approval-failure simulation enabled.' : internalConfirmation ? 'Booking confirmation sent.' : internalOfferRequest ? 'Prepare this flight for review.'
+        : staleApprovalInstruction ? awaitingManagerApproval() ? 'Separate manager approval is pending. No reservation has been placed.' : 'Review the fare in the trip panel and confirm it to continue.'
+          : stalePolicyBlock ? 'This fare is within the current $1,000 USD limit. Manager approval is not required; confirm it in the trip panel to continue.' : message.text;
       if (view.renderedText !== displayText) {
         renderMarkdown(view.body, displayText);
         view.renderedText = displayText;

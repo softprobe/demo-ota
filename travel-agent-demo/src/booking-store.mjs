@@ -178,6 +178,23 @@ export class BookingStore {
       let changed = false;
       for (const session of this.#sessions.values()) {
         const request = session.pending;
+        if (request && ['awaiting_approval', 'approved'].includes(request.status)
+          && request.managerApproval?.policyVersion !== TRAVEL_POLICY.policyVersion) {
+          const previousApproval = request.managerApproval;
+          const currentApproval = managerApprovalFor(request.offer);
+          if (request.status === 'approved' && previousApproval?.status === 'pending') {
+            if (currentApproval.status === 'not_requested') {
+              currentApproval.status = 'pending';
+              currentApproval.requestedAt = previousApproval.requestedAt;
+            } else if (currentApproval.status === 'not_required') {
+              // Reopen the review so the traveler can confirm under the new policy.
+              request.status = 'awaiting_approval';
+            }
+          }
+          request.managerApproval = currentApproval;
+          if (request.demoFault && currentApproval.status === 'not_required') delete request.demoFault;
+          changed = true;
+        }
         if (request?.status === 'submitting') {
           request.status = 'uncertain';
           if (request.result) request.result.verified = false;
