@@ -293,6 +293,66 @@
     return true;
   }
 
+  function appendInlineMarkdown(target, source) {
+    const pattern = /(`[^`]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)/g;
+    let cursor = 0;
+    for (const match of source.matchAll(pattern)) {
+      if (match.index > cursor) target.append(document.createTextNode(source.slice(cursor, match.index)));
+      const token = match[0];
+      const code = token.startsWith('`');
+      const strong = token.startsWith('**') || token.startsWith('__');
+      const wrapper = document.createElement(code ? 'code' : strong ? 'strong' : 'em');
+      const content = token.slice(strong ? 2 : 1, strong ? -2 : -1);
+      if (code) wrapper.textContent = content;
+      else appendInlineMarkdown(wrapper, content);
+      target.append(wrapper);
+      cursor = match.index + token.length;
+    }
+    if (cursor < source.length) target.append(document.createTextNode(source.slice(cursor)));
+  }
+
+  function renderMarkdown(target, source) {
+    target.replaceChildren();
+    const lines = source.replace(/\r/g, '').split('\n');
+    let paragraph = [];
+    let list = null;
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      const block = document.createElement('p');
+      paragraph.forEach((line, index) => {
+        if (index) block.append(document.createElement('br'));
+        appendInlineMarkdown(block, line);
+      });
+      target.append(block);
+      paragraph = [];
+    };
+    for (const line of lines) {
+      if (!line.trim()) { flushParagraph(); list = null; continue; }
+      const item = line.match(/^\s{0,3}([-*+]\s+|\d+[.)]\s+)(.+)$/);
+      if (item) {
+        flushParagraph();
+        const tag = /^\d/.test(item[1]) ? 'ol' : 'ul';
+        if (!list || list.tagName.toLowerCase() !== tag) {
+          list = document.createElement(tag);
+          target.append(list);
+        }
+        const entry = document.createElement('li');
+        appendInlineMarkdown(entry, item[2]);
+        list.append(entry);
+        continue;
+      }
+      list = null;
+      const heading = line.match(/^\s{0,3}(#{1,3})\s+(.+)$/);
+      if (heading) {
+        flushParagraph();
+        const title = document.createElement(`h${heading[1].length + 2}`);
+        appendInlineMarkdown(title, heading[2]);
+        target.append(title);
+      } else paragraph.push(line);
+    }
+    flushParagraph();
+  }
+
   function renderMessages() {
     const allMessages = state.session?.messages || [];
     let changed = renderToolActivity(allMessages);
@@ -315,19 +375,24 @@
         heading.append(author);
         article.append(heading, body, original);
         row.append(article);
-        view = { row, author, body, original, originalText };
+        view = { row, author, body, original, originalText, renderedText: null };
         messageViews.set(key, view);
         changed = true;
       }
       const internalConfirmation = message.role === 'user' && /^I clicked Confirm demo booking in the browser\. The local gateway approved requestId [0-9a-f-]{36}\. Use travel_book with exactly that requestId, then report the independently verified reservation and pending payment\. Do not prepare or book another request\.$/i.test(message.text);
       const internalDemoFault = message.role === 'user' && /^Controlled demo fault: the traveler explicitly enabled the skipped-manager-approval simulation and confirmed this synthetic booking\. Manager approval has NOT been granted\. For this controlled simulation only, use travel_book with exactly requestId [0-9a-f-]{36}\. The gateway will bypass only the manager-approval gate\. Do not change the flight, fare, or traveler; do not prepare another request\. Report only the actual tool result and the pending payment\. This is an injected demo failure, not permission for future bookings\.$/i.test(message.text);
+      const internalOfferRequest = message.role === 'user' && /^I would like to review offer .+\. Ask for first and last name if needed\. Do not book it yet\.$/i.test(message.text);
+      const staleApprovalInstruction = message.role === 'assistant' && awaitingManagerApproval() && /please click\s+\*{0,2}Confirm demo booking\*{0,2}/i.test(message.text);
       view.row.className = `message message--${internalDemoFault ? 'system' : message.role}`;
-      setText(view.author, internalDemoFault ? 'Demo control' : message.role === 'user' ? 'You' : 'Assistant');
-      const displayText = internalDemoFault ? 'Skipped-approval simulation enabled for this demo booking.' : internalConfirmation ? 'Confirm this demo booking.' : message.text;
-      if (view.body.textContent !== displayText) changed = true;
-      setText(view.body, displayText);
-      view.original.hidden = !internalConfirmation && !internalDemoFault;
-      setText(view.originalText, internalConfirmation || internalDemoFault ? message.text : '');
+      setText(view.author, internalDemoFault ? 'Approval simulation' : message.role === 'user' ? 'You' : 'Assistant');
+      const displayText = internalDemoFault ? 'Approval-failure simulation enabled.' : internalConfirmation ? 'Booking confirmation sent.' : internalOfferRequest ? 'Prepare this flight for review.' : staleApprovalInstruction ? 'Separate manager approval is pending. No reservation has been placed.' : message.text;
+      if (view.renderedText !== displayText) {
+        renderMarkdown(view.body, displayText);
+        view.renderedText = displayText;
+        changed = true;
+      }
+      view.original.hidden = !internalConfirmation && !internalDemoFault && !internalOfferRequest;
+      setText(view.originalText, internalConfirmation || internalDemoFault || internalOfferRequest ? message.text : '');
       if (ui.messages.children[index] !== view.row) {
         ui.messages.insertBefore(view.row, ui.messages.children[index] || null);
         changed = true;
@@ -473,25 +538,27 @@
   function renderTripControls() {
     syncBugReview();
     const pending = state.session?.pending;
+    const managerPending = awaitingManagerApproval();
     ui.injectBug.disabled = !canInjectBug();
     ui.bugEnable.disabled = !canInjectBug();
     ui.injectBug.setAttribute('aria-pressed', String(state.injectSilentBug));
-    setText(ui.injectBug, state.injectSilentBug ? 'Silent bug enabled' : 'Inject silent bug');
+    setText(ui.injectBug, state.injectSilentBug ? 'Simulation armed' : 'Simulate skipped approval');
     ui.bugDisable.hidden = !state.injectSilentBug;
     ui.bugDisable.disabled = !canInjectBug();
     setText(ui.bugHint, injectionUnavailableReason() || (state.injectSilentBug
-      ? awaitingManagerApproval() ? 'Enabled for this request. The traveler already confirmed; continue the demo booking to simulate skipped approval.' : 'Enabled for this request. Confirm the demo booking to continue.'
-      : canInjectBug() ? 'Simulate skipping manager approval for this demo request.' : 'The simulation is unavailable until this request is ready for review.'));
+      ? managerPending ? 'Simulation armed for this request. Click Run simulation to submit it.' : 'Simulation armed for this request. Confirm booking to continue.'
+      : canInjectBug() ? 'Simulate the manager-approval policy failure for this request.' : 'The simulation is unavailable until this request is ready for review.'));
+    ui.approve.hidden = managerPending && !state.injectSilentBug;
     ui.approve.disabled = !canApprove() && !canContinueWithBug();
     ui.cancel.disabled = !canDiscard();
-    setText(ui.approve, state.request === 'approve' ? 'Sending confirmation…' : awaitingManagerApproval() ? 'Continue demo booking' : 'Confirm demo booking');
+    setText(ui.approve, state.request === 'approve' ? 'Sending confirmation…' : managerPending && state.injectSilentBug ? 'Run simulation' : 'Confirm booking');
     setText(ui.cancel, state.request === 'cancel' ? 'Discarding…' : 'Discard request');
     for (const button of ui.offers.querySelectorAll('button[data-offer-id]')) {
       button.disabled = !canSend() || blockedOfferChoice() || !button.dataset.offerId || button.dataset.selected === 'true';
     }
     if (!pending) return;
     const states = {
-      awaiting_approval: ['Awaiting confirmation', 'Review the returned fare and synthetic traveler before confirming.'],
+      awaiting_approval: ['Awaiting confirmation', 'Review the passenger and fare before confirming.'],
       approved: ['Confirmation received', 'The agent is continuing this approved request. Do not submit it again.'],
       submitting: ['Submitting reservation', 'Waiting for the travel service. Do not submit this request again.'],
       completed: ['Request completed', 'Check the reservation record and its verification state in this panel.'],
@@ -524,13 +591,13 @@
       else if (state.session?.busy || state.request) hint = 'Wait for the agent to finish before confirming.';
       else if (state.syncing || state.recoveryNeeded) hint = 'The latest conversation state must be checked before confirming.';
       else if (state.status?.ready !== true || state.statusError) hint = 'Reconnect to the gateway before confirming.';
-      else if (state.injectSilentBug) hint = 'Confirm to continue this demo booking with manager approval skipped. No payment will be made.';
-      else if (pending.managerApproval?.status === 'not_requested') hint = 'Your confirmation is not manager approval. Booking will wait for manager approval. No payment will be made.';
-      else hint = 'You control the final step. No payment will be made.';
+      else if (state.injectSilentBug) hint = 'Confirm only to run this approval-failure simulation.';
+      else if (pending.managerApproval?.status === 'not_requested') hint = 'Your confirmation is not manager approval. This fare will wait for separate approval.';
+      else hint = 'Confirm to submit this booking request.';
     } else if (awaitingManagerApproval()) {
       hint = state.injectSilentBug
-        ? 'The traveler already confirmed. Continue only to run the skipped-approval demo; no payment will be made.'
-        : 'Waiting for manager approval. No reservation yet. You may explicitly enable the silent-bug simulation for this request.';
+        ? 'Simulation only: this submits the request without the required approval.'
+        : 'Manager approval is pending. No reservation has been placed.';
     }
     setText(ui.approvalHint, hint);
     ui.approvalHint.hidden = !hint;
@@ -554,7 +621,7 @@
       ui.passenger.replaceChildren();
       if (pending) {
         ui.pendingOffer.append(flightSummary(pending.offer));
-        fillDetails(ui.passenger, [['Synthetic traveler', fullName(pending.passenger)], ['Request ID', pending.id]]);
+        fillDetails(ui.passenger, [['Traveler', fullName(pending.passenger)], ['Request ID', pending.id]]);
         const expires = expiryTime(pending);
         setText(ui.expiry, Number.isFinite(expires)
           ? `Review expires ${new Date(expires).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long' })}`
@@ -582,7 +649,7 @@
         choose.setAttribute('aria-label', `Choose offer ${text(offer?.id)}, ${text(offer?.flightNumber)} from ${text(offer?.origin)} to ${text(offer?.destination)}`);
         choose.addEventListener('click', () => {
           if (!canSend() || blockedOfferChoice() || !hasValue(offer?.id) || selected) return;
-          void sendMessage(`I would like to review offer ${text(offer.id)}. Please ask for any missing synthetic traveler details and prepare a demo booking request for my explicit confirmation. Do not book it yet.`, { offerId: offer.id });
+          void sendMessage(`I would like to review offer ${text(offer.id)}. Ask for first and last name if needed. Do not book it yet.`, { offerId: offer.id });
         });
         actions.append(choose);
         row.append(actions);
@@ -605,7 +672,7 @@
         fillDetails(ui.bookingDetails, [
           ['Booking ID', booking.bookingId], ['Confirmation', booking.confirmationNumber],
           ['Status', booking.status], ['Payment status', booking.paymentStatus],
-          ['Synthetic traveler', fullName(booking.passenger)], ['Flight', booking.flightInfo?.flightNumber],
+          ['Traveler', fullName(booking.passenger)], ['Flight', booking.flightInfo?.flightNumber],
           ['From', booking.flightInfo?.departureAirport], ['To', booking.flightInfo?.arrivalAirport],
           ['Departs', booking.flightInfo?.departureTime], ['Arrives', booking.flightInfo?.arrivalTime],
           ['Amount', money(booking.amount, booking.currency)],
@@ -695,7 +762,7 @@
       if (result.pending?.status === 'awaiting_approval' && result.pending.id !== previousPendingId) {
         announce('A booking review is ready in the trip panel. Review it before confirming.');
       }
-      if (result.booking?.verified === true && !wasVerified) announce('The demo reservation has been verified. It remains unpaid and not ticketed.');
+      if (result.booking?.verified === true && !wasVerified) announce('The reservation is verified. Payment remains pending; no ticket was issued.');
       loaded = true;
     } catch (error) {
       if (version !== generation || id !== state.sessionId) return false;

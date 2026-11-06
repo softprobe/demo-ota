@@ -116,7 +116,7 @@
             </div>
             <dl id="booking-details" class="detail-list"></dl>
             <p class="reservation-disclaimer">Unpaid · Not ticketed</p>
-            <p class="small muted">This synthetic reservation is not a travel document. No real payment or ticket is issued.</p>
+            <p class="small muted">This reservation is not a travel document. No payment or ticket is issued.</p>
           </section>
 
           <section id="pending-review" class="panel-section" aria-labelledby="pending-title" hidden>
@@ -126,20 +126,20 @@
             <div id="pending-offer"></div>
             <dl id="pending-passenger" class="detail-list"></dl>
             <p id="pending-expiry" class="small muted"></p>
-            <p class="review-disclaimer">Confirm only a synthetic traveler. Any demo reservation remains unpaid and not ticketed. Company approval rules still apply.</p>
+            <p class="review-disclaimer">Review the passenger and fare before confirming. Company approval rules still apply.</p>
             <div class="company-policy">
               <h4>Company policy</h4>
               <p id="company-policy">Flights costing more than $600 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.</p>
             </div>
             <div class="inject-bug-control">
               <div class="inline-actions">
-                <button id="inject-bug-button" class="button button-secondary" type="button" aria-haspopup="dialog" aria-controls="inject-bug-dialog" aria-pressed="false" aria-describedby="inject-bug-hint" disabled>Inject silent bug</button>
-                <button id="disable-silent-bug" class="button button-quiet" type="button" hidden>Disable silent bug</button>
+                <button id="inject-bug-button" class="button button-secondary" type="button" aria-haspopup="dialog" aria-controls="inject-bug-dialog" aria-pressed="false" aria-describedby="inject-bug-hint" disabled>Simulate skipped approval</button>
+                <button id="disable-silent-bug" class="button button-quiet" type="button" hidden>Cancel simulation</button>
               </div>
               <p id="inject-bug-hint" class="small muted"></p>
             </div>
             <div class="review-actions">
-              <button id="approve-button" class="button button-confirm" type="button" disabled>Confirm demo booking</button>
+              <button id="approve-button" class="button button-confirm" type="button" disabled>Confirm booking</button>
               <button id="cancel-button" class="button button-quiet" type="button" disabled>Discard request</button>
             </div>
             <p id="approval-hint" class="small muted"></p>
@@ -163,10 +163,10 @@
       <p>Flights costing more than $600 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.</p>
     </div>
     <p id="inject-bug-description">The agent will skip manager approval and book the flight anyway. The booking API will return success.</p>
-    <p id="inject-bug-safety" class="small muted">Demo booking only. No real payment or ticket.</p>
+    <p id="inject-bug-safety" class="small muted">Simulation only. No payment or ticket is issued.</p>
     <div class="dialog-actions">
       <button id="cancel-silent-bug" class="button button-secondary" type="button" autofocus>Cancel</button>
-      <button id="enable-silent-bug" class="button button-confirm" type="button">Enable silent bug</button>
+      <button id="enable-silent-bug" class="button button-confirm" type="button">Arm simulation</button>
     </div>
   </dialog>
   <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>

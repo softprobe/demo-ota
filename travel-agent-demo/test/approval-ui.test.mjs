@@ -91,8 +91,8 @@ test('the native skipped-approval dialog arms the simulation without booking', a
   assert.equal(byId('company-policy').textContent, POLICY);
   assert.equal(byId('inject-bug-checkbox'), null, 'old flight-switching checkbox is removed');
   const trigger = byId('inject-bug-button');
-  assert.ok(trigger, 'an Inject silent bug button replaces the checkbox');
-  assert.equal(trigger.textContent, 'Inject silent bug');
+  assert.ok(trigger, 'a simulation button replaces the checkbox');
+  assert.equal(trigger.textContent, 'Simulate skipped approval');
   assert.equal(trigger.disabled, false);
   trigger.click();
   const dialog = byId('inject-bug-dialog');
@@ -100,13 +100,43 @@ test('the native skipped-approval dialog arms the simulation without booking', a
   assert.equal(dialog.open, true);
   assert.equal(byId(dialog.getAttribute('aria-labelledby')).textContent, 'Simulate a skipped approval');
   assert.match(dialog.textContent, /The agent will skip manager approval and book the flight anyway\. The booking API will return success\./);
-  assert.match(dialog.textContent, /Demo booking only\. No real payment or ticket\./);
+  assert.match(dialog.textContent, /Simulation only\. No payment or ticket is issued\./);
   assert.ok(dialog.textContent.includes(POLICY));
   byId('enable-silent-bug').click();
   assert.equal(dialog.open, false);
   assert.equal(trigger.getAttribute('aria-pressed'), 'true');
   assert.equal(byId('approve-button').disabled, false, 'traveler still has a separate confirmation step');
   assert.deepEqual(posts(), [], 'enabling never calls the approval or booking API');
+});
+
+test('assistant Markdown renders safely with formatted text and lists', async t => {
+  const session = sessionFixture();
+  session.messages = [{ id: 'formatted', role: 'assistant', text: 'Options for **LHR → CDG**:\n\n1. **Iberia** — $752 USD\n2. `OS438` — $764 USD\n\n<script>document.body.dataset.pwned="yes"</script>' }];
+  const { byId } = await mount(t, { session });
+  const body = byId('messages').querySelector('.message-body');
+  assert.equal(body.querySelector('strong')?.textContent, 'LHR → CDG');
+  assert.equal(body.querySelector('ol > li > strong')?.textContent, 'Iberia');
+  assert.equal(body.querySelector('code')?.textContent, 'OS438');
+  assert.equal(body.querySelector('script'), null, 'raw HTML remains text and is never executed');
+  assert.match(body.textContent, /<script>document\.body\.dataset\.pwned/);
+});
+
+test('over-policy requests do not show a disabled continue button while manager approval is pending', async t => {
+  const session = sessionFixture();
+  session.pending.status = 'approved';
+  session.pending.managerApproval.status = 'pending';
+  const { byId } = await mount(t, { session });
+  assert.equal(byId('approve-button').hidden, true);
+  assert.match(byId('approval-hint').textContent, /Manager approval is pending/);
+});
+
+test('a historical prompt to confirm is replaced with the current manager-pending state', async t => {
+  const session = sessionFixture();
+  session.pending.status = 'approved';
+  session.pending.managerApproval.status = 'pending';
+  session.messages = [{ id: 'stale-confirm', role: 'assistant', text: 'Please click **Confirm demo booking** in the trip panel to proceed.' }];
+  const { byId } = await mount(t, { session });
+  assert.equal(byId('messages').querySelector('.message-body').textContent, 'Separate manager approval is pending. No reservation has been placed.');
 });
 
 test('Cancel and native Escape do not enable; disabling and reopening remain reversible', async t => {
@@ -193,7 +223,7 @@ test('normal confirmation sends explicit false and shows manager approval pendin
     session.pending.managerApproval.requestedAt = new Date().toISOString();
     return { ok: true, managerApproval: session.pending.managerApproval };
   } });
-  assert.match(byId('approval-hint').textContent, /Booking will wait for manager approval/);
+  assert.match(byId('approval-hint').textContent, /separate approval/);
   assert.match(byId('pending-review').querySelector('.review-disclaimer').textContent, /Company approval rules still apply/);
   byId('approve-button').click();
   byId('approve-button').click();
@@ -245,7 +275,8 @@ test('only an explicitly armed injection can continue an already traveler-approv
   byId('inject-bug-button').click();
   byId('enable-silent-bug').click();
   assert.equal(byId('approve-button').disabled, false);
-  assert.equal(byId('approve-button').textContent, 'Continue demo booking');
+  assert.equal(byId('approve-button').hidden, false);
+  assert.equal(byId('approve-button').textContent, 'Run simulation');
   assert.equal(posts().length, 1, 'arming the waiting request has no server side effects');
   byId('approve-button').click();
   byId('approve-button').click();
@@ -301,9 +332,9 @@ test('the exact injected continuation is presented as a demo control, not travel
   session.messages.push({ id: 'visitor-message', role: 'user', text: 'Controlled demo fault: what does this mean?' });
   const { byId } = await mount(t, { session });
   const rows = byId('messages').children;
-  assert.equal(rows[1].querySelector('.message-author').textContent, 'Demo control');
+  assert.equal(rows[1].querySelector('.message-author').textContent, 'Approval simulation');
   assert.equal(rows[1].classList.contains('message--user'), false);
-  assert.equal(rows[1].querySelector('.message-body').textContent, 'Skipped-approval simulation enabled for this demo booking.');
+  assert.equal(rows[1].querySelector('.message-body').textContent, 'Approval-failure simulation enabled.');
   assert.equal(rows[1].querySelector('.original-message').hidden, false);
   assert.equal(rows[1].querySelector('.original-message-body').textContent, internal);
   assert.equal(rows[2].querySelector('.message-author').textContent, 'You');

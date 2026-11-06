@@ -39,7 +39,7 @@ test('Vercel AI model requests include current date and infer yearless month/day
 
   assert.match(modelCall.system, /Current date \(UTC\): 2026-11-06/);
   assert.match(modelCall.system, /infer the first occurrence strictly after today's date/);
-  assert.match(modelCall.system, /If you previously asked for a year and the user repeats the month and day, treat that as the answer and proceed/);
+  assert.match(modelCall.system, /If you previously asked for a year and the user repeats the month\/day, treat it as the answer/);
   assert.equal(modelCall.messages.at(-1).content, 'LHR to FRA, Dec 18th');
   assert.deepEqual(Object.keys(modelCall.tools), ['travel_search', 'travel_prepare', 'travel_book', 'travel_order']);
   assert.equal(engine.sessions.get(session.id).provider, 'google');
