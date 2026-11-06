@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { BookingStore } from '../src/booking-store.mjs';
 
-const offer = { id: 'offer-manager', flightId: 'flight-manager', fareId: 'fare-manager', origin: 'CDG', destination: 'IST', date: '2026-11-15', flightNumber: 'DEMO101', departureTime: '2026-11-15T10:00:00', arrivalTime: '2026-11-15T13:30:00', cabinClass: 'ECONOMY', airlineName: 'Demo Air', total: 750, currency: 'USD' };
+const offer = { id: 'offer-manager', flightId: 'flight-manager', fareId: 'fare-manager', origin: 'CDG', destination: 'IST', date: '2026-11-15', flightNumber: 'DEMO101', departureTime: '2026-11-15T10:00:00', arrivalTime: '2026-11-15T13:30:00', cabinClass: 'ECONOMY', airlineName: 'Demo Air', total: 1250, currency: 'USD' };
 const passenger = { firstName: 'Alex', lastName: 'Demo' };
-function prepare(total = 750, currency = 'USD', store = new BookingStore()) {
+function prepare(total = 1250, currency = 'USD', store = new BookingStore()) {
   store.setOffers('ses_policy', [{ ...offer, total, currency }]);
   const pending = store.prepare('ses_policy', { offerId: offer.id, passenger });
   return { store, pending };
@@ -20,7 +20,8 @@ function booking(request) {
 test('policy is attached before booking and traveler confirmation requests, not grants, manager approval', async () => {
   const { store, pending } = prepare();
   assert.equal(pending.managerApproval?.status, 'not_requested');
-  assert.equal(pending.managerApproval.threshold, 600);
+  assert.equal(pending.managerApproval.threshold, 1000);
+  assert.equal(pending.managerApproval.policyVersion, '1.1');
   assert.equal(pending.managerApproval.policyId, 'policy-travel-approval');
   const confirmed = store.approve('ses_policy', pending.id);
   assert.equal(confirmed.status, 'approved');
@@ -43,7 +44,7 @@ test('explicit demo fault skips manager approval without changing the selected f
   const result = await store.submit('ses_policy', pending.id, async request => { calls++; assert.equal(request.offer.id, offer.id); return booking(request); });
   assert.equal(result.managerApproval.status, 'not_requested');
   assert.equal(result.demoFault.kind, 'skip_manager_approval');
-  assert.equal(result.amount, 750);
+  assert.equal(result.amount, 1250);
   assert.equal(calls, 1);
   assert.deepEqual(await store.submit('ses_policy', pending.id, async () => { throw new Error('Must not repeat booking'); }), result);
 });
@@ -65,7 +66,7 @@ test('browser approval and fault arming are one atomic store transition with an 
 });
 
 test('USD boundary and unsupported currencies fail closed without fabricating conversion', async () => {
-  for (const [total, currency, expected] of [[599, 'USD', 'not_required'], [600, 'USD', 'not_required'], [600.01, 'USD', 'pending'], [750, 'EUR', 'unsupported_currency']]) {
+  for (const [total, currency, expected] of [[999, 'USD', 'not_required'], [1000, 'USD', 'not_required'], [1000.01, 'USD', 'pending'], [1250, 'EUR', 'unsupported_currency']]) {
     const { store, pending } = prepare(total, currency);
     const approved = store.approve('ses_policy', pending.id);
     assert.equal(approved.managerApproval.status, expected);
@@ -74,8 +75,36 @@ test('USD boundary and unsupported currencies fail closed without fabricating co
     if (expected === 'not_required') await submit();
     else await assert.rejects(submit(), /manager approval/i);
     assert.equal(calls, expected === 'not_required' ? 1 : 0);
-    if (total <= 600 || currency !== 'USD') assert.throws(() => store.enableSilentBug('ses_policy', pending.id), /above \$600 USD/i);
+    if (total <= 1000 || currency !== 'USD') assert.throws(() => store.enableSilentBug('ses_policy', pending.id), /above \$1,000 USD/i);
   }
+});
+
+test('saved requests retain their original approval policy while new requests use the raised limit', async t => {
+  const scratch = join(homedir(), '.hermes/cache/scratch');
+  mkdirSync(scratch, { recursive: true });
+  const root = mkdtempSync(join(scratch, 'manager-policy-version-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const filePath = join(root, 'bookings.json');
+  const { store, pending } = prepare(750, 'USD', new BookingStore({ filePath }));
+  store.approve('ses_policy', pending.id);
+  const snapshot = JSON.parse(readFileSync(filePath, 'utf8'));
+  const priorApproval = snapshot.sessions[0][1].pending.managerApproval;
+  Object.assign(priorApproval, {
+    policyVersion: '1.0', threshold: 600, status: 'pending', requestedAt: new Date().toISOString(),
+  });
+  writeFileSync(filePath, JSON.stringify(snapshot));
+
+  const restored = new BookingStore({ filePath });
+  assert.equal(restored.getPending('ses_policy').managerApproval.policyVersion, '1.0');
+  assert.equal(restored.getPending('ses_policy').managerApproval.status, 'pending');
+  assert.equal(restored.getPending('ses_policy').managerApproval.threshold, 600);
+  await assert.rejects(restored.submit('ses_policy', pending.id, async () => booking(pending)), /manager approval/i);
+
+  restored.setOffers('ses_new', [{ ...offer, total: 750 }]);
+  const current = restored.prepare('ses_new', { offerId: offer.id, passenger });
+  assert.equal(current.managerApproval.policyVersion, '1.1');
+  assert.equal(current.managerApproval.threshold, 1000);
+  assert.equal(current.managerApproval.status, 'not_required');
 });
 
 test('manager-waiting requests can be cancelled without creating a booking', () => {
@@ -98,7 +127,7 @@ test('verified read-back after an uncertain injected booking retains the approva
 
 test('injection is request-local, expires normally, and cannot be enabled across sessions', async () => {
   let now = 1000;
-  const { store, pending } = prepare(750, 'USD', new BookingStore({ now: () => now, ttlMs: 100 }));
+  const { store, pending } = prepare(1250, 'USD', new BookingStore({ now: () => now, ttlMs: 100 }));
   assert.throws(() => store.enableSilentBug('ses_other', pending.id), /not found/i);
   store.enableSilentBug('ses_policy', pending.id);
   now = 1101;
@@ -116,7 +145,7 @@ test('restart preserves explicit approval evidence and historical records are no
   const root = mkdtempSync(join(scratch, 'manager-policy-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const filePath = join(root, 'bookings.json');
-  const { store, pending } = prepare(750, 'USD', new BookingStore({ filePath }));
+  const { store, pending } = prepare(1250, 'USD', new BookingStore({ filePath }));
   store.enableSilentBug('ses_policy', pending.id);
   store.approve('ses_policy', pending.id);
   const result = await store.submit('ses_policy', pending.id, async request => booking(request));
@@ -149,7 +178,7 @@ test('a failed atomic confirmation cannot leave an armed fault behind for a late
   const root = mkdtempSync(join(scratch, 'manager-policy-write-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const filePath = join(root, 'bookings.json');
-  const { store, pending } = prepare(750, 'USD', new BookingStore({ filePath }));
+  const { store, pending } = prepare(1250, 'USD', new BookingStore({ filePath }));
   renameSync(filePath, `${filePath}.saved`);
   mkdirSync(filePath);
   try {

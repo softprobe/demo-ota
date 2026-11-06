@@ -4,14 +4,14 @@
 - Version: `1.0`
 - Rule ID: `TRV-01`
 
-## §2.1 Manager approval above $600
+## §2.1 Manager approval above $1,000
 
-Flights costing more than **$600 USD** require manager approval **before** the agent creates a booking. The traveler's confirmation does not count as manager approval.
+Flights costing more than **$1,000 USD** require manager approval **before** the agent creates a booking. The traveler's confirmation does not count as manager approval.
 
 For this synthetic demo:
 
-- A USD flight priced at $600 or less does not need this additional approval.
-- A USD flight priced above $600 remains awaiting manager approval after the traveler confirms. No reservation is created while that approval is missing.
+- A USD flight priced at $1,000 or less does not need this additional approval.
+- A USD flight priced above $1,000 remains awaiting manager approval after the traveler confirms. No reservation is created while that approval is missing.
 - Non-USD fares are blocked because the demo does not perform currency conversion.
 - There is no live manager workflow or manager inbox. The normal path records the pending approval requirement and stops.
 

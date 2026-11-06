@@ -29,7 +29,7 @@ You can set `TRAVEL_PROVIDER` and `TRAVEL_MODEL` to choose the initial selection
 
 1. Ask for one-way economy flights from LHR to CDG on an upcoming date. Use a synthetic name such as Alex Demo.
 2. Review the returned flight, fare, date, and traveler in the trip panel. The agent supports one adult and one-way economy.
-3. Click **Confirm demo booking** to continue. Fares above $600 USD stop for separate manager approval. Traveler confirmation is not manager approval. Non-USD fares are blocked because the policy is denominated in USD.
+3. Click **Confirm booking** to continue. Fares above $1,000 USD stop for separate manager approval. Traveler confirmation is not manager approval. Non-USD fares are blocked because the policy is denominated in USD.
 4. To see the controlled failure scenario, explicitly enable **Inject silent bug**, read its confirmation dialog, then confirm the same synthetic booking. This simulation skips only the manager-approval gate for that request.
 5. The app verifies a completed reservation against an independent order lookup. Payment remains pending; no ticket is issued.
 

@@ -2,7 +2,22 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { managerApprovalFor } from './travel-policy.mjs';
+import { TRAVEL_POLICY, managerApprovalFor } from './travel-policy.mjs';
+
+const LEGACY_POLICIES = Object.freeze({
+  '1.0': Object.freeze({ policyId: 'policy-travel-approval', ruleId: 'TRV-01', policyVersion: '1.0', threshold: 600, currency: 'USD' }),
+});
+
+function policyForApproval(approval) {
+  if (!isRecord(approval)) return null;
+  const policy = approval.policyVersion === TRAVEL_POLICY.policyVersion ? TRAVEL_POLICY : LEGACY_POLICIES[approval.policyVersion];
+  if (!policy || !['policyId', 'ruleId', 'policyVersion', 'threshold', 'currency'].every(key => approval[key] === policy[key])) return null;
+  return policy;
+}
+
+function approvalRequiredFor(offer, policy) {
+  return offer.currency === policy.currency && offer.total > policy.threshold;
+}
 
 const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode });
 const isRecord = value => value !== null && typeof value === 'object'
@@ -27,11 +42,13 @@ const validOffers = value => Array.isArray(value) && value.every(validOffer)
 const validTimestamp = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 function validManagerApproval(approval, offer) {
   if (!exactKeys(approval, ['policyId', 'ruleId', 'policyVersion', 'threshold', 'currency', 'status', 'requestedAt'])) return false;
-  const initial = managerApprovalFor(offer);
-  if (!['policyId', 'ruleId', 'policyVersion', 'threshold', 'currency'].every(key => approval[key] === initial[key])) return false;
-  return initial.status === 'not_requested'
+  const policy = policyForApproval(approval);
+  if (!policy) return false;
+  const requiresApproval = offer.currency !== policy.currency || approvalRequiredFor(offer, policy);
+  const initialStatus = offer.currency !== policy.currency ? 'unsupported_currency' : requiresApproval ? 'not_requested' : 'not_required';
+  return initialStatus === 'not_requested'
     ? (approval.status === 'not_requested' && approval.requestedAt === null) || (approval.status === 'pending' && validTimestamp(approval.requestedAt))
-    : approval.status === initial.status && approval.requestedAt === null;
+    : approval.status === initialStatus && approval.requestedAt === null;
 }
 const validJSON = value => value === null || typeof value === 'string' || typeof value === 'boolean'
   || (typeof value === 'number' && Number.isFinite(value))
@@ -79,7 +96,8 @@ function loadSnapshot(data) {
     if (Object.hasOwn(request, 'managerApproval')) check(validManagerApproval(request.managerApproval, request.offer));
     if (Object.hasOwn(request, 'demoFault')) {
       check(exactKeys(request.demoFault, ['kind', 'enabledAt']) && request.demoFault.kind === 'skip_manager_approval'
-        && validTimestamp(request.demoFault.enabledAt) && request.offer.currency === 'USD' && request.offer.total > 600
+        && validTimestamp(request.demoFault.enabledAt) && request.offer.currency === 'USD'
+        && request.offer.total > (policyForApproval(request.managerApproval)?.threshold ?? TRAVEL_POLICY.threshold)
         && validManagerApproval(request.managerApproval, request.offer));
     }
     if (['awaiting_approval', 'approved'].includes(request.status)) {
@@ -282,7 +300,8 @@ export class BookingStore {
     const inject = options?.injectSilentBug ?? Boolean(request.demoFault);
     const waiting = request.status === 'approved' && request.managerApproval?.status === 'pending' && !request.demoFault;
     if (request.status !== 'awaiting_approval' && !(waiting && inject)) throw fail(409, 'This request is no longer awaiting approval.');
-    if (inject && (request.offer.currency !== 'USD' || request.offer.total <= 600)) throw fail(409, 'This demo bug requires an active flight review above $600 USD.');
+    const policy = policyForApproval(request.managerApproval) ?? TRAVEL_POLICY;
+    if (inject && (request.offer.currency !== policy.currency || request.offer.total <= policy.threshold)) throw fail(409, `This demo bug requires an active flight review above $${policy.threshold.toLocaleString('en-US')} USD.`);
     const managerApproval = request.managerApproval ?? managerApprovalFor(request.offer);
     const approved = { ...request, status: 'approved', managerApproval: {
       ...managerApproval,
@@ -296,9 +315,10 @@ export class BookingStore {
 
   enableSilentBug(sessionId, requestId) {
     const request = this.#request(sessionId, requestId);
+    const policy = policyForApproval(request.managerApproval) ?? TRAVEL_POLICY;
     if (!['awaiting_approval', 'approved'].includes(request.status)
-      || request.offer.currency !== 'USD' || request.offer.total <= 600) {
-      throw fail(409, 'This demo bug requires an active flight review above $600 USD.');
+      || request.offer.currency !== policy.currency || request.offer.total <= policy.threshold) {
+      throw fail(409, `This demo bug requires an active flight review above $${policy.threshold.toLocaleString('en-US')} USD.`);
     }
     const enabled = { ...request,
       managerApproval: request.managerApproval ?? managerApprovalFor(request.offer),
@@ -339,8 +359,9 @@ export class BookingStore {
     if (request.status === 'completed') return structuredClone(request.result);
     if (request.status !== 'approved') throw fail(409, 'Explicit human approval is required before booking.');
     const managerApproval = request.managerApproval ?? managerApprovalFor(request.offer);
+    const policy = policyForApproval(managerApproval) ?? TRAVEL_POLICY;
     const demoBypass = request.demoFault?.kind === 'skip_manager_approval'
-      && request.offer.currency === 'USD' && request.offer.total > 600;
+      && request.offer.currency === policy.currency && request.offer.total > policy.threshold;
     if (managerApproval.status !== 'not_required' && !demoBypass) throw fail(409, 'Manager approval is required before booking. No reservation has been created.');
     if (typeof book !== 'function') throw fail(400, 'A booking callback is required.');
     const submitting = { ...request, status: 'submitting' };

@@ -5,19 +5,19 @@ import { JSDOM } from 'jsdom';
 
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-const POLICY = 'Flights costing more than $600 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.';
+const POLICY = 'Flights costing more than $1,000 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.';
 
 function sessionFixture() {
   return {
     id: 'fixture-session', provider: 'google', model: 'gemini-3.8-flash', busy: false,
     messages: [{ id: 'message-1', role: 'assistant', text: 'Review this synthetic traveler and flight.' }],
     offers: [], booking: null,
-    travelPolicy: { policyId: 'policy-travel-approval', ruleId: 'TRV-01', policyVersion: '1.0', threshold: 600, currency: 'USD', text: POLICY },
+    travelPolicy: { policyId: 'policy-travel-approval', ruleId: 'TRV-01', policyVersion: '1.1', threshold: 1000, currency: 'USD', text: POLICY },
     pending: {
       id: 'fixture-request', status: 'awaiting_approval', expiresAt: new Date(Date.now() + 300_000).toISOString(),
-      offer: { id: 'offer-1', total: 725, currency: 'USD', flightNumber: 'DEMO101', origin: 'JFK', destination: 'LAX', date: '2027-01-10' },
+      offer: { id: 'offer-1', total: 1250, currency: 'USD', flightNumber: 'DEMO101', origin: 'JFK', destination: 'LAX', date: '2027-01-10' },
       passenger: { firstName: 'Demo', lastName: 'Traveler' },
-      managerApproval: { policyId: 'policy-travel-approval', ruleId: 'TRV-01', policyVersion: '1.0', threshold: 600, currency: 'USD', status: 'not_requested', requestedAt: null },
+      managerApproval: { policyId: 'policy-travel-approval', ruleId: 'TRV-01', policyVersion: '1.1', threshold: 1000, currency: 'USD', status: 'not_requested', requestedAt: null },
     },
   };
 }
@@ -202,7 +202,7 @@ test('a dialog cannot arm an offer replaced while it was open', async t => {
   assert.equal(byId('inject-bug-button').getAttribute('aria-pressed'), 'false');
 });
 
-for (const [amount, currency, reason] of [[600, 'USD', /\$600 USD or less/], [599.99, 'USD', /\$600 USD or less/], [725, 'EUR', /USD fares/], ['unavailable', 'USD', /valid USD fare/]]) {
+for (const [amount, currency, reason] of [[1000, 'USD', /\$1,000 USD or less/], [999.99, 'USD', /\$1,000 USD or less/], [1250, 'EUR', /USD fares/], ['unavailable', 'USD', /valid USD fare/]]) {
   test(`injection is unavailable for ${currency} ${amount} with a nearby explanation`, async t => {
     const session = sessionFixture();
     Object.assign(session.pending.offer, { total: amount, currency });
@@ -241,7 +241,7 @@ test('an armed traveler confirmation sends true once and completed receipt expla
   const { byId, posts } = await mount(t, { approve(body, session) {
     session.pending.status = 'completed';
     session.pending.demoFault = { kind: 'skip_manager_approval', enabledAt: new Date().toISOString() };
-    session.booking = { bookingId: 'demo-booking', verified: true, status: 'confirmed', paymentStatus: 'pending', amount: 725, currency: 'USD', demoFault: session.pending.demoFault, managerApproval: session.pending.managerApproval };
+    session.booking = { bookingId: 'demo-booking', verified: true, status: 'confirmed', paymentStatus: 'pending', amount: 1250, currency: 'USD', demoFault: session.pending.demoFault, managerApproval: session.pending.managerApproval };
     return { ok: true };
   } });
   byId('inject-bug-button').click();
@@ -290,11 +290,11 @@ test('only an explicitly armed injection can continue an already traveler-approv
 
 test('a lower USD fare still confirms normally without an injected-fault receipt', async t => {
   const session = sessionFixture();
-  session.pending.offer.total = 600;
+  session.pending.offer.total = 1000;
   session.pending.managerApproval.status = 'not_required';
   const { byId, posts } = await mount(t, { session, approve(body, current) {
     current.pending.status = 'completed';
-    current.booking = { bookingId: 'lower-fare', verified: true, amount: 600, currency: 'USD', managerApproval: current.pending.managerApproval };
+    current.booking = { bookingId: 'lower-fare', verified: true, amount: 1000, currency: 'USD', managerApproval: current.pending.managerApproval };
     return { ok: true };
   } });
   assert.equal(byId('approve-button').disabled, false);

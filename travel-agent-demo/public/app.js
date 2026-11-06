@@ -497,11 +497,14 @@
   }
 
   function injectionUnavailableReason() {
-    const offer = state.session?.pending?.offer;
-    if (offer?.currency !== 'USD') return 'This simulation is available only for USD fares above $600.';
+    const pending = state.session?.pending;
+    const offer = pending?.offer;
+    const threshold = Number(pending?.managerApproval?.threshold ?? state.session?.travelPolicy?.threshold ?? 1000);
+    const thresholdText = `$${threshold.toLocaleString('en-US')} USD`;
+    if (offer?.currency !== 'USD') return `This simulation is available only for USD fares above ${thresholdText}.`;
     const total = hasValue(offer.total) ? Number(offer.total) : NaN;
     if (!Number.isFinite(total) || total < 0) return 'A valid USD fare is required to simulate skipped approval.';
-    if (total <= 600) return 'Manager approval is not required for fares of $600 USD or less. No skipped approval to simulate.';
+    if (total <= threshold) return `Manager approval is not required for fares of ${thresholdText} or less. No skipped approval to simulate.`;
     return '';
   }
 

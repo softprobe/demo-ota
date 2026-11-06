@@ -102,10 +102,10 @@ test('agent travel tools need the local capability only', async t => {
   assert.equal((await authorized.json()).offers[0].offerId, 'offer-1');
 });
 
-test('traveler confirmation above $600 waits for manager approval without another model turn', async t => {
+test('traveler confirmation above $1,000 waits for manager approval without another model turn', async t => {
   const pending = {
     id: 'abcdefab-cdef-4abc-8def-abcdefabcdef', status: 'awaiting_approval',
-    offer: { currency: 'USD', total: 750 }, managerApproval: { status: 'not_requested' },
+    offer: { currency: 'USD', total: 1250 }, managerApproval: { status: 'not_requested' },
   };
   const f = await fixture(t, { pending });
   const session = await (await f.post('/agent/api/sessions', {})).json();

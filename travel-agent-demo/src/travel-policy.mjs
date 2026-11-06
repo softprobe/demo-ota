@@ -1,11 +1,11 @@
 export const TRAVEL_POLICY = Object.freeze({
   policyId: 'policy-travel-approval',
   ruleId: 'TRV-01',
-  policyVersion: '1.0',
+  policyVersion: '1.1',
   name: 'Company Travel Policy',
-  threshold: 600,
+  threshold: 1000,
   currency: 'USD',
-  text: 'Flights costing more than $600 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.',
+  text: 'Flights costing more than $1,000 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.',
 });
 
 export function managerApprovalFor(offer) {
