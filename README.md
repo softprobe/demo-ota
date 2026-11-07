@@ -9,6 +9,11 @@ Upstream airline mock (NDC 21.3 JSON): **[sp-airline-ndc](https://github.com/sof
 | Module | Role |
 |--------|------|
 | `travel-ota` | Spring Boot OTA layer (Java agent instrumented) |
+| [`travel-agent-demo`](travel-agent-demo/README.md) | Vercel AI travel agent with browser-based search, booking, payment and order verification |
+
+## Travel agent demo
+
+The `travel-agent-demo` module adds a local browser-based travel agent alongside the Java OTA service. At the local demo entrypoint, the original OTA site remains at `/` and the agent chat is at `/agent`. It runs against the OTA demo APIs, requires manager approval above $1,000 USD, and supports a separately confirmed test-card payment and paid-order verification. Its setup, safety boundaries, and test instructions are in the [module README](travel-agent-demo/README.md).
 
 ## Build
 

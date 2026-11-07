@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="referrer" content="no-referrer">
+  <title>Travel agent · demo-ota</title>
+  <link rel="stylesheet" href="/agent/styles.css">
+  <script src="/agent/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#message-input">Skip to message</a>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="workspace-name">
+        <span class="product-name">demo-ota</span>
+        <span class="name-divider" aria-hidden="true">/</span>
+        <span>Travel agent</span>
+        <span class="environment">Local demo</span>
+      </div>
+      <div class="topbar-actions">
+        <label class="model-choice">Provider
+          <select id="model-provider" aria-label="Model provider" disabled></select>
+        </label>
+        <label class="model-choice model-choice--id">Model ID
+          <input id="model-id" type="text" value="" maxlength="200" autocomplete="off" spellcheck="false" aria-label="Model ID" disabled>
+        </label>
+        <details class="connection-details">
+          <summary>
+            <span id="connection-dot" class="connection-dot" aria-hidden="true"></span>
+            <span id="connection-label">Connecting</span>
+          </summary>
+          <div class="connection-popover">
+            <h2>Local connection</h2>
+            <dl class="detail-list">
+              <div><dt>Agent runtime</dt><dd id="runtime-status">Not checked</dd></div>
+              <div><dt>Travel service</dt><dd id="travel-status">Not checked</dd></div>
+              <div><dt>Model</dt><dd id="model-status">Not returned</dd></div>
+              <div><dt>Environment</dt><dd id="environment-status">Not checked</dd></div>
+            </dl>
+          </div>
+        </details>
+        <button id="new-conversation" class="button button-secondary" type="button" title="Start fresh locally. This does not cancel an existing reservation." hidden>New conversation</button>
+      </div>
+    </header>
+
+    <div id="gateway-banner" class="gateway-banner" role="status">
+      <p id="gateway-message">Connecting to the local gateway…</p>
+      <button id="retry-connection" class="button button-quiet" type="button">Retry connection</button>
+    </div>
+
+    <main id="workspace" class="workspace workspace--single workspace--initial">
+      <section class="conversation" aria-labelledby="conversation-title">
+        <header id="conversation-header" class="section-header conversation-header" hidden>
+          <div>
+            <h1 id="conversation-title">Chat</h1>
+            <p class="section-description">One way <span aria-hidden="true">·</span> Economy <span aria-hidden="true">·</span> 1 adult</p>
+          </div>
+          <div class="conversation-meta">
+            <span id="conversation-state" class="sr-only" role="status">No session yet</span>
+            <a id="trip-link" class="text-link" href="#trip-panel" hidden>Review trip</a>
+          </div>
+        </header>
+
+        <div id="conversation-scroll" class="conversation-scroll" tabindex="-1" aria-label="Scrollable conversation">
+          <section id="empty-state" class="empty-conversation" aria-labelledby="empty-title">
+            <h2 id="empty-title">Where would you like to go?</h2>
+
+          </section>
+          <ol id="messages" class="messages" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions text"></ol>
+          <details id="conversation-actions" class="conversation-actions" hidden>
+            <summary id="actions-summary">Agent activity</summary>
+            <ol id="actions-list" class="tool-list" aria-label="Agent actions"></ol>
+          </details>
+          <p id="activity" class="activity" role="status" hidden></p>
+        </div>
+
+        <div class="conversation-footer">
+          <div class="latest-row"><button id="jump-latest" class="button button-secondary" type="button" hidden>Latest message</button></div>
+          <div id="error-banner" class="error-banner" role="alert" hidden>
+            <p id="error-text"></p>
+            <div class="inline-actions">
+              <button id="retry-session" class="button button-quiet" type="button" hidden>Refresh conversation</button>
+              <button id="dismiss-error" class="button button-quiet" type="button">Dismiss</button>
+            </div>
+          </div>
+          <p id="notice" class="notice" role="status" hidden></p>
+          <form id="composer" class="composer">
+            <label for="message-input" class="sr-only">Message the travel agent</label>
+            <textarea id="message-input" name="message" rows="2" placeholder="Where to? Include a date and your preferences." aria-describedby="composer-hint demo-note" autocomplete="off" spellcheck="true"></textarea>
+            <div class="composer-toolbar">
+              <p id="composer-hint" class="small muted">Enter to send <span aria-hidden="true">·</span> Shift+Enter for a new line</p>
+              <div class="inline-actions">
+                <button id="stop-button" class="button button-secondary" type="button" hidden>Stop agent</button>
+                <button id="send-button" class="button button-primary" type="submit" disabled>Send message</button>
+              </div>
+            </div>
+          </form>
+          <p id="demo-note" class="safety-note">Never enter real personal details or payment information.</p>
+        </div>
+      </section>
+
+      <aside id="trip-panel" class="trip-panel" aria-labelledby="trip-title" tabindex="-1" hidden>
+        <header class="section-header trip-header">
+          <div><h2 id="trip-title">Trip review</h2></div>
+          <a class="text-link mobile-only" href="#message-input">Back to chat</a>
+        </header>
+        <div class="trip-scroll">
+
+          <section id="booking-result" class="panel-section" aria-labelledby="booking-title" hidden>
+            <div class="panel-heading"><h3 id="booking-title" tabindex="-1">Demo reservation</h3><span id="booking-verification" class="status-label"></span></div>
+            <p id="booking-verification-note" class="small"></p>
+            <div id="skipped-approval-receipt" class="skipped-approval-receipt" hidden>
+              <p class="small">Silent bug injected: manager approval was skipped. The booking API returned success.</p>
+            </div>
+            <dl id="booking-details" class="detail-list"></dl>
+            <div id="payment-actions" class="inline-actions" hidden>
+              <button id="pay-issue-button" class="button button-confirm" type="button">Pay and issue ticket</button>
+              <span id="payment-action-status" class="small muted" role="status"></span>
+            </div>
+            <p id="reservation-disclaimer" class="reservation-disclaimer">Unpaid · Not ticketed</p>
+            <p id="payment-note" class="small muted">The verified reservation is awaiting payment.</p>
+          </section>
+
+          <section id="pending-review" class="panel-section" aria-labelledby="pending-title" hidden>
+            <div class="panel-heading"><h3 id="pending-title">Booking review</h3><span id="pending-status" class="status-label"></span></div>
+            <p id="pending-status-detail" class="small"></p>
+            <p id="manager-approval-status" class="small muted" role="status"></p>
+            <div id="pending-offer"></div>
+            <dl id="pending-passenger" class="detail-list"></dl>
+            <p id="pending-expiry" class="small muted"></p>
+            <p class="review-disclaimer">Review the passenger and fare before confirming. Company approval rules still apply.</p>
+            <div class="company-policy">
+              <h4>Company policy</h4>
+              <p id="company-policy">Flights costing more than $1,000 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.</p>
+            </div>
+            <div class="inject-bug-control">
+              <div class="inline-actions">
+                <button id="inject-bug-button" class="button button-secondary" type="button" aria-haspopup="dialog" aria-controls="inject-bug-dialog" aria-pressed="false" aria-describedby="inject-bug-hint" disabled>Simulate skipped approval</button>
+                <button id="disable-silent-bug" class="button button-quiet" type="button" hidden>Cancel simulation</button>
+              </div>
+              <p id="inject-bug-hint" class="small muted"></p>
+            </div>
+            <div class="review-actions">
+              <button id="approve-button" class="button button-confirm" type="button" disabled>Confirm booking</button>
+              <button id="cancel-button" class="button button-quiet" type="button" disabled>Discard request</button>
+            </div>
+            <p id="approval-hint" class="small muted"></p>
+          </section>
+
+          <section id="offers-section" class="panel-section" aria-labelledby="offers-title" hidden>
+            <div class="panel-heading"><h3 id="offers-title">Flight &amp; fare choices</h3><span id="offers-count" class="small muted"></span></div>
+            <p class="small muted">Times are shown as returned. The mock service does not provide time-zone data.</p>
+            <ol id="offers" class="offers"></ol>
+          </section>
+
+
+        </div>
+      </aside>
+    </main>
+  </div>
+  <dialog id="inject-bug-dialog" class="approval-dialog" aria-labelledby="inject-bug-title" aria-describedby="inject-bug-description inject-bug-safety">
+    <h2 id="inject-bug-title">Simulate a skipped approval</h2>
+    <div class="company-policy">
+      <h4>Company policy</h4>
+      <p>Flights costing more than $1,000 USD require manager approval before booking. The traveler’s confirmation does not count as manager approval.</p>
+    </div>
+    <p id="inject-bug-description">The agent will skip manager approval and book the flight anyway. The booking API will return success.</p>
+    <p id="inject-bug-safety" class="small muted">Simulation only. No payment or ticket is issued.</p>
+    <div class="dialog-actions">
+      <button id="cancel-silent-bug" class="button button-secondary" type="button" autofocus>Cancel</button>
+      <button id="enable-silent-bug" class="button button-confirm" type="button">Arm simulation</button>
+    </div>
+  </dialog>
+  <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <noscript><p class="noscript-notice">JavaScript is required to connect this chat to the local gateway. No conversation has been started.</p></noscript>
+</body>
+</html>
