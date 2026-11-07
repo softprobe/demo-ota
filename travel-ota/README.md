@@ -51,6 +51,10 @@ A demo flight booking system built with JDK 21 and Spring Boot 3.x. It includes 
 
 At replay, inject a different `tenant.sales-region` (e.g. `EU` vs recorded `MEA`) so tax — and fare prices — differ; replay diff fails if static config is not refreshed. Test: `mvn test -Dtest=RegionTenantCodeConfigTest`.
 
+## Browser session capture
+
+The demo pages do not load the browser SDK by default. To add browser capture, install `@softprobe/web-record`, import `RecordSdk` in the web app's JavaScript entry, and call `RecordSdk.init` with the Agent API key, Explorer base URL, and application API origin. The Java service needs no capture configuration controller or read credential. Input masking is enabled by default; `.capture-private` is the example visible-text masking selector.
+
 Workspace E2E: [`arex/e2e/instrumentation-matrix.md`](https://github.com/softprobe/arex/blob/main/e2e/instrumentation-matrix.md).
 
 ## Instrumentation E2E map
@@ -139,7 +143,10 @@ travel-ota
 3. Open http://localhost:8080
 
 ## Sample data
-This service uses mocked data and does not require a database:
+This service uses mocked flight and fare data. Booking and payment records use an
+embedded H2 database that starts with the application; no database service or
+profile-specific database configuration is required. The database is in-memory,
+so its records last for the lifetime of the Java process:
 - Flight data for multiple carriers
 - Fare options across suppliers
 - Booking flow with generated PNR and ticket number
