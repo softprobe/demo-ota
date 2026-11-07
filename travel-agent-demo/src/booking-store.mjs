@@ -1,0 +1,497 @@
+import { randomUUID } from 'node:crypto';
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
+import { TRAVEL_POLICY, managerApprovalFor } from './travel-policy.mjs';
+
+const LEGACY_POLICIES = Object.freeze({
+  '1.0': Object.freeze({ policyId: 'policy-travel-approval', ruleId: 'TRV-01', policyVersion: '1.0', threshold: 600, currency: 'USD' }),
+});
+
+function policyForApproval(approval) {
+  if (!isRecord(approval)) return null;
+  const policy = approval.policyVersion === TRAVEL_POLICY.policyVersion ? TRAVEL_POLICY : LEGACY_POLICIES[approval.policyVersion];
+  if (!policy || !['policyId', 'ruleId', 'policyVersion', 'threshold', 'currency'].every(key => approval[key] === policy[key])) return null;
+  return policy;
+}
+
+function approvalRequiredFor(offer, policy) {
+  return offer.currency === policy.currency && offer.total > policy.threshold;
+}
+
+const fail = (statusCode, message) => Object.assign(new Error(message), { statusCode });
+const isRecord = value => value !== null && typeof value === 'object'
+  && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const exactKeys = (value, keys) => isRecord(value)
+  && Reflect.ownKeys(value).length === keys.length
+  && keys.every(key => Object.hasOwn(value, key));
+// Keep synthetic names within the upstream ASCII/10-character contract.
+const validName = value => typeof value === 'string' && value === value.trim()
+  && /^[A-Za-z][A-Za-z' -]{0,9}$/.test(value);
+const validPassenger = value => exactKeys(value, ['firstName', 'lastName'])
+  && validName(value.firstName) && validName(value.lastName);
+const validText = value => typeof value === 'string' && value.length > 0 && value.length <= 512
+  && value === value.trim() && !/[\p{Cc}\p{Cf}<>]/u.test(value);
+const validOffer = value => isRecord(value)
+  && ['id', 'flightId', 'fareId', 'origin', 'destination', 'date', 'flightNumber', 'departureTime', 'arrivalTime', 'cabinClass', 'airlineName'].every(key => validText(value[key]))
+  && /^[A-Z]{3}$/.test(value.origin) && /^[A-Z]{3}$/.test(value.destination) && value.origin !== value.destination
+  && /^\d{4}-\d{2}-\d{2}$/.test(value.date) && value.departureTime.startsWith(`${value.date}T`)
+  && Number.isFinite(value.total) && value.total > 0 && /^[A-Z]{3}$/.test(value.currency);
+const validOffers = value => Array.isArray(value) && value.every(validOffer)
+  && new Set(value.map(offer => offer.id)).size === value.length;
+const validTimestamp = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+function validManagerApproval(approval, offer) {
+  if (!exactKeys(approval, ['policyId', 'ruleId', 'policyVersion', 'threshold', 'currency', 'status', 'requestedAt'])) return false;
+  const policy = policyForApproval(approval);
+  if (!policy) return false;
+  const requiresApproval = offer.currency !== policy.currency || approvalRequiredFor(offer, policy);
+  const initialStatus = offer.currency !== policy.currency ? 'unsupported_currency' : requiresApproval ? 'not_requested' : 'not_required';
+  return initialStatus === 'not_requested'
+    ? (approval.status === 'not_requested' && approval.requestedAt === null) || (approval.status === 'pending' && validTimestamp(approval.requestedAt))
+    : approval.status === initialStatus && approval.requestedAt === null;
+}
+const validJSON = value => value === null || typeof value === 'string' || typeof value === 'boolean'
+  || (typeof value === 'number' && Number.isFinite(value))
+  || (Array.isArray(value) && value.every(validJSON))
+  || (isRecord(value) && Object.values(value).every(item => item === undefined || validJSON(item)));
+
+function cloneJSON(value) {
+  const copy = structuredClone(value);
+  const encoded = JSON.stringify(copy); // Also rejects cycles before recursive validation.
+  if (!validJSON(copy)) throw fail(409, 'Booking data must contain only finite JSON values.');
+  return JSON.parse(encoded);
+}
+
+function partialResult(error, returned) {
+  const source = isRecord(error?.result) ? error.result : isRecord(returned) ? returned : {};
+  const partial = Object.fromEntries(Object.entries(source).flatMap(([key, value]) => {
+    try { return [[key, cloneJSON(value)]]; } catch { return []; }
+  }));
+  if (validText(error?.confirmationNumber) && !partial.confirmationNumber) partial.confirmationNumber = error.confirmationNumber;
+  return Object.keys(partial).length ? { ...partial, verified: false } : undefined;
+}
+
+function loadSnapshot(data) {
+  const check = condition => { if (!condition) throw new Error('Invalid booking store state; refusing to discard it.'); };
+  check(exactKeys(data, ['version', 'sessions']) && data.version === 1 && Array.isArray(data.sessions) && validJSON(data));
+  const sessionIds = new Set();
+  const requestIds = new Set();
+  for (const entry of data.sessions) {
+    check(Array.isArray(entry) && entry.length === 2);
+    const [sessionId, session] = entry;
+    check(validText(sessionId) && !sessionIds.has(sessionId) && isRecord(session));
+    sessionIds.add(sessionId);
+    check(exactKeys(session, ['offers', ...(Object.hasOwn(session, 'pending') ? ['pending'] : [])]) && validOffers(session.offers));
+    if (!Object.hasOwn(session, 'pending')) continue;
+    const request = session.pending;
+    check(isRecord(request));
+    const hasResult = Object.hasOwn(request, 'result');
+    check(exactKeys(request, ['id', 'status', 'offer', 'passenger', 'expiresAt', ...(hasResult ? ['result'] : []), ...(Object.hasOwn(request, 'managerApproval') ? ['managerApproval'] : []), ...(Object.hasOwn(request, 'demoFault') ? ['demoFault'] : []), ...(Object.hasOwn(request, 'payment') ? ['payment'] : [])]));
+    check(typeof request.id === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(request.id)
+      && !requestIds.has(request.id));
+    requestIds.add(request.id);
+    check(['awaiting_approval', 'approved', 'submitting', 'completed', 'uncertain', 'expired', 'cancelled'].includes(request.status)
+      && validOffer(request.offer) && validPassenger(request.passenger)
+      && Number.isSafeInteger(request.expiresAt) && request.expiresAt >= 0);
+    if (Object.hasOwn(request, 'managerApproval')) check(validManagerApproval(request.managerApproval, request.offer));
+    if (Object.hasOwn(request, 'demoFault')) {
+      check(exactKeys(request.demoFault, ['kind', 'enabledAt']) && request.demoFault.kind === 'skip_manager_approval'
+        && validTimestamp(request.demoFault.enabledAt) && request.offer.currency === 'USD'
+        && request.offer.total > (policyForApproval(request.managerApproval)?.threshold ?? TRAVEL_POLICY.threshold)
+        && validManagerApproval(request.managerApproval, request.offer));
+    }
+    if (['awaiting_approval', 'approved'].includes(request.status)) {
+      check(session.offers.some(offer => isDeepStrictEqual(offer, request.offer)));
+    }
+    if (hasResult) {
+      check(['submitting', 'completed', 'uncertain'].includes(request.status) && isRecord(request.result));
+      if (request.status === 'uncertain') check(request.result.verified === false);
+    }
+    if (request.status === 'completed') {
+      check(hasResult && matchesBooking(request.result, request));
+      if (request.demoFault) {
+        check(isDeepStrictEqual(request.result.managerApproval, request.managerApproval)
+          && isDeepStrictEqual(request.result.demoFault, request.demoFault));
+      }
+    }
+    if (Object.hasOwn(request, 'payment')) {
+      const payment = request.payment;
+      check(request.status === 'completed' && isRecord(payment) && ['submitting', 'uncertain', 'completed'].includes(payment.status));
+      check(payment.status === 'completed'
+        ? exactKeys(payment, ['status', 'result']) && validPaymentResult(payment.result, request)
+        : exactKeys(payment, ['status']));
+    }
+  }
+  return new Map(data.sessions);
+}
+
+function matchesBooking(result, request, paymentStatus = 'PENDING') {
+  const { offer, passenger } = request;
+  const flight = result?.flightInfo;
+  return isRecord(result) && result.verified === true
+    && validText(result.bookingId)
+    && typeof result.confirmationNumber === 'string' && /^[A-Z0-9]{6}$/.test(result.confirmationNumber)
+    && (paymentStatus === 'PAID' ? ['TICKETED', 'CONFIRMED'].includes(result.status) : result.status === 'CONFIRMED')
+    && result.paymentStatus === paymentStatus
+    && result.amount === offer.total && result.currency === offer.currency
+    && validPassenger(result.passenger)
+    && result.passenger.firstName === passenger.firstName && result.passenger.lastName === passenger.lastName
+    && flight?.flightId === offer.flightId && flight?.flightNumber === offer.flightNumber
+    && flight?.departureAirport === offer.origin && flight?.arrivalAirport === offer.destination
+    && flight?.departureTime === offer.departureTime && flight?.arrivalTime === offer.arrivalTime
+    && flight?.cabinClass === offer.cabinClass
+    && (result.paymentInfo?.paymentStatus === undefined || result.paymentInfo.paymentStatus === paymentStatus)
+    && (flight.fareId === undefined || flight.fareId === offer.fareId)
+    && (flight.airlineName === undefined || flight.airlineName === offer.airlineName)
+    && ['confirmationNumber', 'bookingId'].every(key => request.result?.[key] == null || request.result[key] === result[key]);
+}
+
+function validPaymentResult(value, request) {
+  if (!exactKeys(value, ['payment', 'booking']) || !isRecord(value.payment) || !isRecord(value.booking)) return false;
+  const payment = value.payment;
+  const basePaymentKeys = ['paymentId', 'transactionId', 'status', 'bookingId', 'amount', 'currency', 'paymentMethod', 'paymentDate'];
+  const apiPaymentKeys = [...basePaymentKeys, 'apiStatus', 'apiMessage', 'apiResponseVerified'];
+  const hasApiResponse = exactKeys(payment, apiPaymentKeys);
+  return (hasApiResponse || exactKeys(payment, basePaymentKeys))
+    && validText(payment.paymentId) && (payment.transactionId === null || validText(payment.transactionId)) && payment.status === 'SUCCESS'
+    && payment.bookingId === request.result?.bookingId && payment.amount === request.offer.total
+    && payment.currency === request.offer.currency && payment.paymentMethod === 'CREDIT_CARD'
+    && (payment.paymentDate === null || validTimestamp(payment.paymentDate))
+    && (!hasApiResponse || (['SUCCESS', 'FAILED', 'PENDING', 'CANCELLED', 'UNKNOWN'].includes(payment.apiStatus)
+      && (payment.apiMessage === null || validText(payment.apiMessage))
+      && typeof payment.apiResponseVerified === 'boolean'
+      && (!payment.apiResponseVerified || payment.apiStatus === 'SUCCESS')))
+    && matchesBooking(value.booking, request, 'PAID')
+    && value.booking.bookingId === payment.bookingId && value.booking.amount === payment.amount
+    && value.booking.currency === payment.currency && value.booking.paymentInfo?.paymentId === payment.paymentId
+    && value.booking.paymentInfo?.paymentMethod === payment.paymentMethod;
+}
+
+/**
+ * One booking per conversation, one live writer per optional snapshot file.
+ * Pending: { id, status, offer, passenger, expiresAt, result? }; reads return copies.
+ * New searches cancel unsubmitted approvals. Only awaiting/approved states expire.
+ * submit() persists its barrier before calling the trusted booking/verification adapter.
+ * Any ambiguous outcome is non-retryable; completeReadBack() returns a verified result,
+ * matching the approved identity and every known reference, without making a booking.
+ * Snapshots use file fsync + same-directory atomic rename, not distributed locking.
+ */
+export class BookingStore {
+  #sessions;
+  #now;
+  #ttlMs;
+  #filePath;
+
+  constructor(options = {}) {
+    if (!isRecord(options) || !Reflect.ownKeys(options).every(key => ['filePath', 'now', 'ttlMs'].includes(key))) {
+      throw fail(400, 'BookingStore accepts only filePath, now and ttlMs options.');
+    }
+    const { filePath, now = Date.now, ttlMs = 15 * 60 * 1_000 } = options;
+    if (typeof now !== 'function' || !Number.isSafeInteger(ttlMs) || ttlMs <= 0
+      || (filePath !== undefined && (typeof filePath !== 'string' || !filePath || filePath.includes('\0')))) {
+      throw fail(400, 'Use a file path, a clock function and a positive integer TTL.');
+    }
+    this.#now = now;
+    this.#ttlMs = ttlMs;
+    this.#time();
+    this.#filePath = filePath === undefined ? undefined : resolve(filePath);
+    this.#sessions = new Map();
+    if (this.#filePath) {
+      let data;
+      try {
+        data = readFileSync(this.#filePath, 'utf8');
+      } catch (error) {
+        if (error.code === 'ENOENT') return;
+        throw error;
+      }
+      this.#sessions = loadSnapshot(JSON.parse(data));
+      let changed = false;
+      for (const session of this.#sessions.values()) {
+        const request = session.pending;
+        if (request && ['awaiting_approval', 'approved'].includes(request.status)
+          && request.managerApproval?.policyVersion !== TRAVEL_POLICY.policyVersion) {
+          const previousApproval = request.managerApproval;
+          const currentApproval = managerApprovalFor(request.offer);
+          if (request.status === 'approved' && previousApproval?.status === 'pending') {
+            if (currentApproval.status === 'not_requested') {
+              currentApproval.status = 'pending';
+              currentApproval.requestedAt = previousApproval.requestedAt;
+            } else if (currentApproval.status === 'not_required') {
+              // Reopen the review so the traveler can confirm under the new policy.
+              request.status = 'awaiting_approval';
+            }
+          }
+          request.managerApproval = currentApproval;
+          if (request.demoFault && currentApproval.status === 'not_required') delete request.demoFault;
+          changed = true;
+        }
+        if (request?.status === 'submitting') {
+          request.status = 'uncertain';
+          if (request.result) request.result.verified = false;
+          changed = true;
+        } else if (request && ['awaiting_approval', 'approved'].includes(request.status) && this.#time() >= request.expiresAt) {
+          request.status = 'expired';
+          changed = true;
+        }
+        if (request?.payment?.status === 'submitting') {
+          request.payment = { status: 'uncertain' };
+          changed = true;
+        }
+      }
+      if (changed) this.#persist(this.#sessions);
+    }
+  }
+
+  #time() {
+    const time = this.#now();
+    if (!Number.isSafeInteger(time) || time < 0 || !Number.isSafeInteger(time + this.#ttlMs)) {
+      throw fail(400, 'The clock must return a finite nonnegative millisecond timestamp.');
+    }
+    return time;
+  }
+
+  #persist(sessions) {
+    if (!this.#filePath) return;
+    const data = JSON.stringify({ version: 1, sessions: [...sessions] });
+    const directory = dirname(this.#filePath);
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const temporary = join(directory, `.${basename(this.#filePath)}.${randomUUID()}.tmp`);
+    let fd;
+    try {
+      fd = openSync(temporary, 'wx', 0o600);
+      writeFileSync(fd, data, 'utf8');
+      fsyncSync(fd);
+      closeSync(fd);
+      fd = undefined;
+      renameSync(temporary, this.#filePath);
+    } finally {
+      if (fd !== undefined) closeSync(fd);
+      rmSync(temporary, { force: true });
+    }
+  }
+
+  #commit(sessionId, session) {
+    const next = new Map(this.#sessions);
+    next.set(sessionId, session);
+    this.#persist(next);
+    this.#sessions = next;
+  }
+
+  #setPending(sessionId, pending) {
+    this.#commit(sessionId, { ...this.#sessions.get(sessionId), pending });
+  }
+
+  setOffers(sessionId, offers) {
+    if (!validText(sessionId)) throw fail(400, 'A nonempty session ID is required.');
+    let copy;
+    try {
+      copy = cloneJSON(offers);
+      if (!validOffers(copy)) throw new Error('Invalid offers');
+    } catch {
+      throw fail(400, 'Search must supply valid JSON offers with unique IDs.');
+    }
+    const session = { ...this.#sessions.get(sessionId), offers: copy };
+    if (['awaiting_approval', 'approved'].includes(session.pending?.status)) {
+      session.pending = { ...session.pending, status: this.#time() >= session.pending.expiresAt ? 'expired' : 'cancelled' };
+    }
+    this.#commit(sessionId, session);
+  }
+
+  getOffers(sessionId) {
+    return structuredClone(this.#sessions.get(sessionId)?.offers ?? []);
+  }
+
+  prepare(sessionId, input) {
+    if (!exactKeys(input, ['offerId', 'passenger']) || !validPassenger(input.passenger)
+      || typeof input.offerId !== 'string' || !input.offerId) {
+      throw fail(400, 'Provide only an offerId and synthetic firstName/lastName of 1–10 safe characters each.');
+    }
+    const { offerId, passenger } = input;
+    const session = this.#sessions.get(sessionId);
+    if (['submitting', 'completed', 'uncertain'].includes(session?.pending?.status)) {
+      throw fail(409, 'This conversation already has a submitted booking request.');
+    }
+    const offer = session?.offers.find(item => item.id === offerId);
+    if (!offer) throw fail(404, 'Choose an offer returned by this session’s search.');
+    const pending = {
+      id: randomUUID(), status: 'awaiting_approval', offer: structuredClone(offer),
+      passenger: structuredClone(passenger), expiresAt: this.#time() + this.#ttlMs,
+      managerApproval: managerApprovalFor(offer),
+    };
+    this.#setPending(sessionId, pending);
+    return structuredClone(pending);
+  }
+
+  getPending(sessionId) {
+    return structuredClone(this.#pending(sessionId));
+  }
+
+  getBooking(sessionId) {
+    const request = this.#pending(sessionId);
+    if (!request?.result) return null;
+    const attempt = request.payment ?? null;
+    const booking = attempt?.status === 'completed' ? { ...request.result, ...attempt.result.booking } : { ...request.result };
+    if (request.result.managerApproval) booking.managerApproval = structuredClone(request.result.managerApproval);
+    if (request.result.demoFault) booking.demoFault = structuredClone(request.result.demoFault);
+    if (attempt) booking.paymentAttempt = { status: attempt.status };
+    if (attempt?.status === 'uncertain') booking.paymentStatus = 'UNKNOWN';
+    if (attempt?.status === 'completed') booking.payment = structuredClone(attempt.result.payment);
+    return structuredClone(booking);
+  }
+
+  beginPayment(sessionId, requestId) {
+    const request = this.#request(sessionId, requestId);
+    if (request.status !== 'completed' || !request.result?.verified) throw fail(409, 'Only a verified reservation can be paid.');
+    if (request.payment?.status === 'completed') return { alreadyCompleted: true, booking: this.getBooking(sessionId) };
+    if (request.payment) throw fail(409, 'Payment outcome is not clear. Check the order; do not retry payment.');
+    if (request.result.paymentStatus !== 'PENDING') throw fail(409, 'This reservation is not awaiting payment.');
+    this.#setPending(sessionId, { ...request, payment: { status: 'submitting' } });
+    return { alreadyCompleted: false, request: this.getPending(sessionId) };
+  }
+
+  completePayment(sessionId, requestId, result) {
+    const request = this.#request(sessionId, requestId);
+    if (request.status !== 'completed' || request.payment?.status !== 'submitting') throw fail(409, 'A matching payment attempt is not in progress.');
+    let copy;
+    try { copy = cloneJSON(result); } catch { throw fail(409, 'Payment result must contain only JSON values.'); }
+    if (!validPaymentResult(copy, request)) throw fail(409, 'Payment and independent order read-back must verify this exact booking.');
+    this.#setPending(sessionId, { ...request, payment: { status: 'completed', result: copy } });
+    return this.getBooking(sessionId);
+  }
+
+  failPayment(sessionId, requestId) {
+    const request = this.#sessions.get(sessionId)?.pending;
+    if (!request || request.id !== requestId || request.payment?.status !== 'submitting') return;
+    const uncertain = { ...request, payment: { status: 'uncertain' } };
+    try { this.#setPending(sessionId, uncertain); }
+    catch { this.#sessions.set(sessionId, uncertain); }
+  }
+
+  #pending(sessionId) {
+    let request = this.#sessions.get(sessionId)?.pending ?? null;
+    if (request && ['awaiting_approval', 'approved'].includes(request.status) && this.#time() >= request.expiresAt) {
+      request = { ...request, status: 'expired' };
+      this.#setPending(sessionId, request);
+    }
+    return request;
+  }
+
+  #request(sessionId, requestId) {
+    const request = this.#sessions.get(sessionId)?.pending;
+    if (!request || request.id !== requestId) throw fail(404, 'Booking request not found in this session.');
+    return this.#pending(sessionId);
+  }
+
+  approve(sessionId, requestId, options) {
+    const request = this.#request(sessionId, requestId);
+    if (options !== undefined && (!exactKeys(options, ['injectSilentBug']) || typeof options.injectSilentBug !== 'boolean')) throw fail(400, 'An explicit boolean injection flag is required.');
+    const inject = options?.injectSilentBug ?? Boolean(request.demoFault);
+    const waiting = request.status === 'approved' && request.managerApproval?.status === 'pending' && !request.demoFault;
+    if (request.status !== 'awaiting_approval' && !(waiting && inject)) throw fail(409, 'This request is no longer awaiting approval.');
+    const policy = policyForApproval(request.managerApproval) ?? TRAVEL_POLICY;
+    if (inject && (request.offer.currency !== policy.currency || request.offer.total <= policy.threshold)) throw fail(409, `This demo bug requires an active flight review above $${policy.threshold.toLocaleString('en-US')} USD.`);
+    const managerApproval = request.managerApproval ?? managerApprovalFor(request.offer);
+    const approved = { ...request, status: 'approved', managerApproval: {
+      ...managerApproval,
+      ...(!inject && managerApproval.status === 'not_requested' ? { status: 'pending', requestedAt: new Date(this.#time()).toISOString() } : {}),
+    } };
+    if (inject) approved.demoFault = request.demoFault ?? { kind: 'skip_manager_approval', enabledAt: new Date(this.#time()).toISOString() };
+    else delete approved.demoFault;
+    this.#setPending(sessionId, approved);
+    return structuredClone(approved);
+  }
+
+  enableSilentBug(sessionId, requestId) {
+    const request = this.#request(sessionId, requestId);
+    const policy = policyForApproval(request.managerApproval) ?? TRAVEL_POLICY;
+    if (!['awaiting_approval', 'approved'].includes(request.status)
+      || request.offer.currency !== policy.currency || request.offer.total <= policy.threshold) {
+      throw fail(409, `This demo bug requires an active flight review above $${policy.threshold.toLocaleString('en-US')} USD.`);
+    }
+    const enabled = { ...request,
+      managerApproval: request.managerApproval ?? managerApprovalFor(request.offer),
+      demoFault: { kind: 'skip_manager_approval', enabledAt: new Date(this.#time()).toISOString() },
+    };
+    this.#setPending(sessionId, enabled);
+    return structuredClone(enabled);
+  }
+
+  cancel(sessionId, requestId) {
+    const request = this.#request(sessionId, requestId);
+    if (!['awaiting_approval', 'approved', 'cancelled'].includes(request.status)) {
+      throw fail(409, 'Only an unsubmitted request can be cancelled.');
+    }
+    const cancelled = { ...request, status: 'cancelled' };
+    this.#setPending(sessionId, cancelled);
+    return structuredClone(cancelled);
+  }
+
+  completeReadBack(sessionId, requestId, result) {
+    const request = this.#request(sessionId, requestId);
+    let copy;
+    try { copy = cloneJSON(result); } catch { throw fail(409, 'Read-back must return a JSON booking result.'); }
+    if (request.status === 'completed' && request.payment?.status === 'completed') {
+      if (!matchesBooking(copy, request, 'PAID') || copy.bookingId !== request.payment.result.payment.bookingId
+        || copy.paymentInfo?.paymentId !== request.payment.result.payment.paymentId) throw fail(409, 'Read-back must verify the paid booking and matching payment.');
+      return this.getBooking(sessionId);
+    }
+    if (request.status === 'completed' && request.payment?.status === 'uncertain' && matchesBooking(copy, request, 'PAID')) {
+      const payment = {
+        paymentId: copy.paymentInfo.paymentId, transactionId: null, status: 'SUCCESS',
+        bookingId: copy.bookingId, amount: copy.amount, currency: copy.currency,
+        paymentMethod: copy.paymentInfo.paymentMethod, paymentDate: copy.paymentInfo.paymentDate ?? null,
+      };
+      const verifiedPayment = { payment, booking: copy };
+      if (!validPaymentResult(verifiedPayment, request)) throw fail(409, 'Paid order read-back does not match this booking.');
+      this.#setPending(sessionId, { ...request, payment: { status: 'completed', result: verifiedPayment } });
+      return this.getBooking(sessionId);
+    }
+    if (!['uncertain', 'completed'].includes(request.status) || !matchesBooking(copy, request)) {
+      throw fail(409, 'Read-back must verify the exact pending booking and any known reference.');
+    }
+    if (request.status === 'completed') return this.getBooking(sessionId);
+    if (request.demoFault?.kind === 'skip_manager_approval') {
+      copy.managerApproval = structuredClone(request.managerApproval);
+      copy.demoFault = structuredClone(request.demoFault);
+    }
+    this.#setPending(sessionId, { ...request, result: copy, status: 'completed' });
+    return structuredClone(copy);
+  }
+
+  async submit(sessionId, requestId, book) {
+    const request = this.#request(sessionId, requestId);
+    if (request.status === 'completed') return structuredClone(request.result);
+    if (request.status !== 'approved') throw fail(409, 'Explicit human approval is required before booking.');
+    const managerApproval = request.managerApproval ?? managerApprovalFor(request.offer);
+    const policy = policyForApproval(managerApproval) ?? TRAVEL_POLICY;
+    const demoBypass = request.demoFault?.kind === 'skip_manager_approval'
+      && request.offer.currency === policy.currency && request.offer.total > policy.threshold;
+    if (managerApproval.status !== 'not_required' && !demoBypass) throw fail(409, 'Manager approval is required before booking. No reservation has been created.');
+    if (typeof book !== 'function') throw fail(400, 'A booking callback is required.');
+    const submitting = { ...request, status: 'submitting' };
+    this.#setPending(sessionId, submitting);
+    let result;
+    try {
+      result = await book(structuredClone(submitting));
+      const savedResult = cloneJSON(result);
+      if (!matchesBooking(savedResult, request)) throw fail(409, 'The booking callback did not return a verified result matching the approved request.');
+      if (demoBypass) {
+        savedResult.managerApproval = structuredClone(managerApproval);
+        savedResult.demoFault = structuredClone(request.demoFault);
+      }
+      this.#setPending(sessionId, { ...submitting, result: savedResult, status: 'completed' });
+      return structuredClone(savedResult);
+    } catch (error) {
+      const uncertain = { ...submitting, status: 'uncertain' };
+      const partial = partialResult(error, result);
+      if (partial) uncertain.result = partial;
+      try {
+        this.#setPending(sessionId, uncertain);
+      } catch {
+        // The durable pre-call barrier is still submitting, so restart also forbids retry.
+        this.#sessions.set(sessionId, { ...this.#sessions.get(sessionId), pending: uncertain });
+      }
+      throw error;
+    }
+  }
+}

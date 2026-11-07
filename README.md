@@ -9,6 +9,11 @@ Upstream airline mock (NDC 21.3 JSON): **[sp-airline-ndc](https://github.com/sof
 | Module | Role |
 |--------|------|
 | `travel-ota` | Spring Boot OTA layer (Java agent instrumented) |
+| [`travel-agent-demo`](travel-agent-demo/README.md) | Vercel AI travel agent packaged into the existing all-in-one demo image |
+
+## Travel agent demo
+
+The `travel-agent-demo` module adds a browser-based travel agent to the existing demo image. One container runs the Java OTA app and the Node gateway; the gateway serves the agent at `/agent` and proxies the original OTA site at `/`. The OTA always uses the deployed Cloudflare airline service at `spair.softprobe.ai`; no airline-service container is started. Fares over $1,000 USD require manager approval, and payment uses a separate confirmation with the OTA test card. See the [module README](travel-agent-demo/README.md) for running the image.
 
 ## Build
 
@@ -17,6 +22,14 @@ mvn -B -DskipTests package
 ```
 
 JAR: `travel-ota/target/travel-ota-1.0-SNAPSHOT.jar`
+
+Build the all-in-one image from the repository root:
+
+```bash
+docker build -f travel-ota/Dockerfile -t demo-ota:local .
+```
+
+The build includes the Java OTA and Node agent in one image. See the [travel agent README](travel-agent-demo/README.md) for `docker run` instructions.
 
 ## Configuration
 
