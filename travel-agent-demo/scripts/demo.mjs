@@ -1,28 +1,36 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
-process.chdir(root);
-const docker = existsSync('/Applications/Docker.app/Contents/Resources/bin/docker') ? '/Applications/Docker.app/Contents/Resources/bin/docker' : 'docker';
+const docker = process.env.DOCKER_BIN || 'docker';
+const image = process.env.DEMO_IMAGE;
+if (!image) throw new Error('Set DEMO_IMAGE to the all-in-one demo image, such as demo-ota:local.');
+
 async function run(command, args, stdio = 'inherit') {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio });
+    const child = spawn(command, args, { stdio });
     child.once('error', reject);
     child.once('exit', code => code === 0 ? resolve() : reject(new Error(`${command} exited with code ${code}.`)));
   });
 }
+
 try { await run(docker, ['info', '--format', '{{.ServerVersion}}'], 'ignore'); }
 catch { throw new Error('Start Docker and wait for its engine to be ready, then run npm run demo again.'); }
-await run(docker, ['compose', '-f', join(root, 'compose.yaml'), 'up', '-d']);
-let ready = false;
-for (let attempt = 0; attempt < 60; attempt += 1) {
-  try {
-    const response = await fetch('http://127.0.0.1:8080/', { signal: AbortSignal.timeout(1000) });
-    if (response.ok) { ready = true; break; }
-  } catch { /* a fresh Java container can take time to start */ }
-  await new Promise(resolve => setTimeout(resolve, 1000));
-}
-if (!ready) throw new Error('The synthetic OTA app did not become healthy. Inspect docker compose logs before retrying.');
-await import('../src/start.mjs');
+
+const providerEnvironment = [
+  'GOOGLE_GENERATIVE_AI_API_KEY',
+  'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'AI_GATEWAY_API_KEY',
+  'VERCEL_OIDC_TOKEN',
+  'AI_COMPATIBLE_BASE_URL',
+  'AI_COMPATIBLE_API_KEY',
+  'TRAVEL_PROVIDER',
+  'TRAVEL_MODEL',
+];
+const args = ['run', '--rm', '--init', '--publish', '127.0.0.1:8080:8080'];
+for (const name of providerEnvironment) if (process.env[name]) args.push('--env', name);
+args.push(image);
+
+console.log('Travel OTA demo: http://127.0.0.1:8080/');
+console.log('Travel agent: http://127.0.0.1:8080/agent');
+await run(docker, args);

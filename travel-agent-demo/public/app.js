@@ -745,7 +745,8 @@
         : paymentApiConfirmed ? `The OTA pay-and-issue API returned SUCCESS${booking.payment.apiMessage ? `: ${booking.payment.apiMessage}` : ''}. The order lookup independently confirms PAID but has no separate ticket number or ticket status. Do not pay again.`
           : 'The order lookup independently confirms PAID. This saved record has no verified pay-and-issue response or ticket status; do not pay again.'
       : paymentAttempt === 'uncertain' ? 'The payment request may have reached the service; the gateway blocks duplicate payment attempts.'
-        : 'The reservation is verified and awaiting payment.');
+        : booking?.verified ? 'The reservation is verified and awaiting payment.'
+          : 'No verified reservation is available for payment. Ask the agent to check the existing reservation before taking another action.');
     if (paid) {
       setText(ui.bookingNote, ticketed
         ? 'The order service verified payment and ticket status.'

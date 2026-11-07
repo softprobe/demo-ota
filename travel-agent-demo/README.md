@@ -1,19 +1,25 @@
 # demo-ota travel agent
 
-A local browser chat for flight search, booking, payment, and order verification, built with the Vercel AI SDK. It runs beside this repository’s original OTA web app: the original stays at `/`, and the agent is served at `/agent` on the same local origin.
+A browser chat for flight search, booking, payment, and order verification, built with the Vercel AI SDK. The existing demo image contains both the Java OTA and the Node agent gateway in one container. The original OTA stays at `/`; the agent is served at `/agent` on the same origin.
 
-## Start
+The OTA calls the deployed Cloudflare airline service at `https://spair.softprobe.ai/ndc/v21.3`. The demo does not run an airline-service container.
 
-Requirements: Node.js 22+, npm, Docker, and at least one model provider configured in the server environment. API keys stay on the server and are never sent to the browser. The model selector lists configured providers; enter a model ID supported by the selected provider.
+## Run the image
+
+Requirements: Docker and an API key for at least one model provider. API keys stay in the container environment and are never sent to the browser. The model selector lists configured providers; enter a model ID supported by the selected provider.
 
 ```sh
-cd travel-agent-demo
-npm ci --ignore-scripts
-export GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-key
-npm run demo
+DEMO_IMAGE=gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:your-tag
+docker pull "$DEMO_IMAGE"
+docker run --rm --init \
+  --publish 127.0.0.1:8080:8080 \
+  --env GOOGLE_GENERATIVE_AI_API_KEY \
+  "$DEMO_IMAGE"
 ```
 
-Open [http://127.0.0.1:4310/](http://127.0.0.1:4310/) for the original OTA web app or [http://127.0.0.1:4310/agent](http://127.0.0.1:4310/agent) for the agent. `npm run demo` starts the synthetic OTA and airline services in Docker, then launches the local gateway. The app binds to loopback only.
+Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/) for the original OTA web app or [http://127.0.0.1:8080/agent](http://127.0.0.1:8080/agent) for the agent. The single container starts the Java OTA on an internal port and exposes the Node gateway on port 8080; the gateway proxies the original OTA site and APIs.
+
+To run a locally built image, build from the repository root with `docker build -f travel-ota/Dockerfile -t demo-ota:local .`, then use `DEMO_IMAGE=demo-ota:local npm run demo` from this directory. `npm run demo` runs that one image with `docker run`; it does not start Compose services.
 
 Provider environment variables:
 
@@ -42,4 +48,4 @@ npm run check
 npm test
 ```
 
-The offline tests use fixtures and do not call the model or Docker services. To start only the agent runtime after the synthetic services are already running, use `npm start`.
+The offline tests use fixtures and do not call the model or airline service. To run only the agent runtime from source during development, use `npm start`; it expects the OTA API at `http://127.0.0.1:8080` by default. The all-in-one image is the supported standalone demo and E2E app entrypoint.

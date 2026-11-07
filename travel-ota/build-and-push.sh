@@ -6,6 +6,9 @@
 
 set -e  # Exit on any error
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 # Check if version argument is provided
 if [ $# -eq 0 ]; then
     echo "Error: Version number is required"
@@ -18,6 +21,8 @@ VERSION=$1
 IMAGE_NAME="demo-ota"
 REGISTRY="gcr.io/cs-poc-sasxbttlzroculpau4u6e2l"
 FULL_IMAGE_NAME="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
+
+cd "${ROOT_DIR}"
 
 echo "🚀 Starting Docker build and push process..."
 echo "📦 Image: ${FULL_IMAGE_NAME}"
@@ -41,19 +46,18 @@ echo "🔐 Configuring Docker authentication with Google Cloud..."
 gcloud auth configure-docker
 
 echo "🔨 Building Docker image..."
-mvn clean package
-docker build --platform linux/amd64 -t ${IMAGE_NAME}:${VERSION} .
+docker build --platform linux/amd64 -f travel-ota/Dockerfile -t "${IMAGE_NAME}:${VERSION}" .
 
 echo "🏷️  Tagging image for Google Container Registry..."
-docker tag ${IMAGE_NAME}:${VERSION} ${FULL_IMAGE_NAME}
+docker tag "${IMAGE_NAME}:${VERSION}" "${FULL_IMAGE_NAME}"
 
 echo "📤 Pushing image to Google Container Registry..."
-docker push ${FULL_IMAGE_NAME}
+docker push "${FULL_IMAGE_NAME}"
 
 echo "✅ Successfully built and pushed ${FULL_IMAGE_NAME}"
 
 # Clean up local tags
 echo "🧹 Cleaning up local tags..."
-docker rmi ${IMAGE_NAME}:${VERSION} ${FULL_IMAGE_NAME}
+docker rmi "${IMAGE_NAME}:${VERSION}" "${FULL_IMAGE_NAME}"
 
 echo "🎉 Done! Image ${FULL_IMAGE_NAME} is now available in Google Container Registry"

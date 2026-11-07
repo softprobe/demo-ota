@@ -1,10 +1,13 @@
 const AIRPORTS = new Set('LHR CDG FRA AMS MAD BCN FCO MXP ZRH VIE CPH ARN OSL HEL WAW PRG BUD ATH IST'.split(' '));
+const TAX_RATE_BY_REGION = Object.freeze({ MEA: 0.08, EU: 0.20 });
 
 export class TravelAPI {
-  constructor({ baseUrl = 'http://127.0.0.1:8080', fetchFn = fetch, now = () => new Date() } = {}) {
+  constructor({ baseUrl = 'http://127.0.0.1:8080', fetchFn = fetch, now = () => new Date(), salesRegion = process.env.TENANT_SALES_REGION ?? 'MEA' } = {}) {
     this.baseUrl = baseUrl;
     this.fetch = fetchFn;
     this.now = now;
+    const region = typeof salesRegion === 'string' ? salesRegion.trim().toUpperCase() : 'MEA';
+    this.taxRate = TAX_RATE_BY_REGION[region] ?? TAX_RATE_BY_REGION.MEA;
   }
 
   async post(path, body) {
@@ -48,6 +51,12 @@ export class TravelAPI {
     const traveler = data?.passengers?.[0];
     const returnedPaymentStatusValid = paymentStatus === 'ANY' ? ['PENDING', 'PAID'].includes(p?.paymentStatus) : p?.paymentStatus === paymentStatus;
     const returnedBookingStatusValid = p?.paymentStatus === 'PAID' ? ['TICKETED', 'CONFIRMED'].includes(data?.status) : data?.status === 'CONFIRMED';
+    const returnedAmount = p?.amount;
+    const amountMatchesApprovedFare = Number.isFinite(returnedAmount) && returnedAmount > 0 && (
+      Math.round(returnedAmount * 100) === Math.round(offer.total * 100)
+      // OTA search adds the configured sales-region tax; the airline order API returns its pre-tax amount.
+      || (p?.paymentStatus === 'PENDING' && Math.round(returnedAmount * (1 + this.taxRate) * 100) === Math.round(offer.total * 100))
+    );
     const valid = typeof data?.bookingId === 'string' && data.bookingId.length > 0 && /^[A-Z0-9]{6}$/.test(data.confirmationNumber ?? '')
       && (!expectedConfirmation || data.confirmationNumber === expectedConfirmation)
       && (!expectedBookingId || data.bookingId === expectedBookingId)
@@ -58,10 +67,10 @@ export class TravelAPI {
       && f?.departureTime === offer.departureTime && f?.arrivalTime === offer.arrivalTime
       && f?.cabinClass === offer.cabinClass && p?.currency === offer.currency && returnedPaymentStatusValid
       && (!paymentId || p?.paymentId === paymentId)
-      && Number.isFinite(p?.amount) && p.amount > 0 && Math.round(p.amount * 100) === Math.round(offer.total * 100)
+      && amountMatchesApprovedFare
       && data.passengers?.length === 1 && traveler?.passengerType === 'ADULT' && traveler?.firstName === passenger.firstName && traveler?.lastName === passenger.lastName;
     if (!valid) throw new Error('Booking verification failed: returned flight, traveler, price, currency, or payment state does not match the approved request.');
-    return { bookingId: data.bookingId, confirmationNumber: data.confirmationNumber, status: data.status, paymentStatus: p.paymentStatus, verified: true, flightInfo: f, amount: p.amount, currency: p.currency, passenger: { firstName: traveler.firstName, lastName: traveler.lastName }, paymentInfo: { paymentId: p.paymentId ?? null, paymentMethod: p.paymentMethod ?? null, paymentStatus: p.paymentStatus, paymentDate: p.paymentDate ?? null } };
+    return { bookingId: data.bookingId, confirmationNumber: data.confirmationNumber, status: data.status, paymentStatus: p.paymentStatus, verified: true, flightInfo: f, amount: offer.total, currency: p.currency, passenger: { firstName: traveler.firstName, lastName: traveler.lastName }, paymentInfo: { paymentId: p.paymentId ?? null, paymentMethod: p.paymentMethod ?? null, paymentStatus: p.paymentStatus, paymentDate: p.paymentDate ?? null } };
   }
 
   async queryAndVerify(request, confirmationNumber, expectedBookingId = request.result?.bookingId, payment = {}) {

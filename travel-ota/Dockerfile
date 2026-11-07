@@ -1,27 +1,48 @@
+FROM maven:3.9-eclipse-temurin-21 AS ota-build
+WORKDIR /workspace
+COPY pom.xml ./pom.xml
+COPY travel-ota/pom.xml ./travel-ota/pom.xml
+COPY travel-ota/src ./travel-ota/src
+RUN mvn -B -DskipTests -pl travel-ota -am package
+
+FROM node:22-bookworm-slim AS node-runtime
+
+FROM node:22-bookworm-slim AS agent-dependencies
+WORKDIR /opt/travel-agent-demo
+COPY travel-agent-demo/package.json travel-agent-demo/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+COPY travel-agent-demo/src ./src
+COPY travel-agent-demo/public ./public
+COPY travel-agent-demo/references ./references
+
 FROM docker.m.daocloud.io/library/eclipse-temurin:21-jre-jammy
 
-COPY target/*.jar app.jar
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Download the Softprobe Java Agent
-RUN curl -LO https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
-RUN mv opentelemetry-javaagent.jar otel.jar
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=agent-dependencies /opt/travel-agent-demo /opt/travel-agent-demo
+COPY --from=ota-build /workspace/travel-ota/target/travel-ota-1.0-SNAPSHOT.jar /app.jar
+COPY run-all.sh /run-all.sh
+
+# Download the existing Java agent used by this image.
+RUN curl -fsSL https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar -o /otel.jar \
+    && chmod +x /run-all.sh
 
 ENV SPRING_PROFILES_ACTIVE="prod"
 ENV SP_SERVICE_NAME="fbd4ef5d331bf64e"
 ENV SP_API_KEY="qCjaffz86DzHp6jGIH0Ks50EP0bOLCg-Iuju3HLSP4I"
 ENV SP_STORAGE_SERVICE_HOST="storage-onpremise-gcp.softprobe.ai"
+ENV SERVER_PORT="8081"
+ENV TRAVEL_AGENT_PORT="8080"
+ENV TRAVEL_AGENT_HOST="0.0.0.0"
+ENV TRAVEL_OTA_BASE_URL="http://127.0.0.1:8081"
+ENV AIRLINE_NDC_BASE_URL="https://spair.softprobe.ai/ndc/v21.3"
+ENV TENANT_SALES_REGION="MEA"
 # Add this before ENV VERSION
 ARG VERSION=dev-1.0.0
 ENV VERSION=${VERSION}
 
-# Start the application
-ENTRYPOINT ["sh", "-c", \
- "java ${JAVA_OPTS} \
-    -javaagent:otel.jar \
-    -Dotel.traces.exporter=none \
-    -Dotel.metrics.exporter=none \
-    -Dotel.logs.exporter=none \
-    -Dotel.resource.attributes=service.name=sp-storage \
-    -Dotel.instrumentation.http.server.capture-request-headers=tracestate \
-    -Dotel.instrumentation.http.server.capture-response-headers=tracestate \
-    -jar /app.jar"]
+EXPOSE 8080
+ENTRYPOINT ["/run-all.sh"]

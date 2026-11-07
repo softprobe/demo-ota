@@ -38,6 +38,22 @@ test('booking uses synthetic fields and is verified by independent order read-ba
   assert.deepEqual(calls[1].body, { confirmationNumber: 'ABC123', passengerLastName: 'Demo' });
 });
 
+test('MEA-taxed search price verifies against the external airline base fare', async () => {
+  const taxedRequest = { ...request, offer: { ...selected, total: 812.16 } };
+  const carrierBooking = { ...booking, paymentInfo: { ...booking.paymentInfo, amount: 752 } };
+  const calls = [];
+  const api = new TravelAPI({ fetchFn: async url => {
+    calls.push(new URL(url).pathname);
+    return json(carrierBooking);
+  } });
+
+  const result = await api.bookAndVerify(taxedRequest);
+
+  assert.equal(result.verified, true);
+  assert.equal(result.amount, 812.16, 'the approved, tax-inclusive amount remains authoritative');
+  assert.deepEqual(calls, ['/api/flights/book', '/api/flights/orders/query']);
+});
+
 test('payment uses the OTA test card and verifies the paid order without searching or retrying', async () => {
   const calls = [];
   const bookingRequest = {

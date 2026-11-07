@@ -30,6 +30,7 @@ function startupFixture(t, { failStart = false, pause = '' } = {}) {
       if (name === ${JSON.stringify(pause)}) while (!existsSync('release')) await delay(10);
     }
   `);
+  writeFileSync(join(src, 'travel-api.mjs'), 'export class TravelAPI {}');
   writeFileSync(join(src, 'booking-store.mjs'), 'export class BookingStore {}');
   writeFileSync(join(src, 'engine.mjs'), `
     import { existsSync } from 'node:fs';

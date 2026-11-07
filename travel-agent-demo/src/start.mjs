@@ -4,10 +4,15 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { VercelAIEngine } from './engine.mjs';
 import { BookingStore } from './booking-store.mjs';
+import { TravelAPI } from './travel-api.mjs';
 import { createGateway } from './server.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const runtime = join(root, '.runtime');
+const port = Number(process.env.TRAVEL_AGENT_PORT ?? 4310);
+const host = process.env.TRAVEL_AGENT_HOST ?? '127.0.0.1';
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('TRAVEL_AGENT_PORT must be a valid TCP port.');
+const travel = new TravelAPI({ baseUrl: process.env.TRAVEL_OTA_BASE_URL ?? 'http://127.0.0.1:8080' });
 mkdirSync(runtime, { recursive: true, mode: 0o700 });
 mkdirSync(join(runtime, 'tmp'), { recursive: true, mode: 0o700 });
 const lockPath = join(runtime, 'server.lock');
@@ -20,7 +25,7 @@ if (existsSync(lockPath)) {
 }
 writeFileSync(lockPath, String(process.pid), { flag: 'wx', mode: 0o600 });
 const internalToken = randomBytes(32).toString('hex');
-const engine = new VercelAIEngine({ root, internalToken });
+const engine = new VercelAIEngine({ root, internalToken, gatewayPort: port });
 let server;
 let stopping = false;
 let stopPromise;
@@ -50,11 +55,11 @@ async function start() {
   const store = new BookingStore({ filePath: join(runtime, 'bookings.json') });
   const health = await engine.start();
   if (stopping) return;
-  server = createGateway({ root, engine, store, internalToken, maxConversations: null, basePath: '/agent' });
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(4310, '127.0.0.1', resolve); });
+  server = createGateway({ root, engine, store, internalToken, travel, maxConversations: null, basePath: '/agent' });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   if (stopping) return;
-  console.log('Travel OTA web app: http://127.0.0.1:4310/');
-  console.log('Travel agent: http://127.0.0.1:4310/agent');
+  console.log(`Travel OTA web app: http://127.0.0.1:${port}/`);
+  console.log(`Travel agent: http://127.0.0.1:${port}/agent`);
   console.log(`Synthetic demo only. Configured model providers: ${health.providers.map(provider => provider.label).join(', ') || 'none'}. Bookings remain unpaid and require explicit confirmation.`);
 }
 try {
