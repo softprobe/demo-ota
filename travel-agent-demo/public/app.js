@@ -30,6 +30,8 @@
     booking: byId('booking-result'), bookingTitle: byId('booking-title'),
     bookingVerification: byId('booking-verification'), bookingNote: byId('booking-verification-note'),
     bookingDetails: byId('booking-details'), skippedReceipt: byId('skipped-approval-receipt'),
+    paymentActions: byId('payment-actions'), payIssue: byId('pay-issue-button'),
+    paymentActionStatus: byId('payment-action-status'), reservationDisclaimer: byId('reservation-disclaimer'), paymentNote: byId('payment-note'),
   };
 
   const SESSION_KEY = 'demo-ota.travel.sessionId';
@@ -86,6 +88,15 @@
 
   function announce(message) {
     setText(ui.announcer, message);
+  }
+
+  function bookingAnnouncement(booking) {
+    if (booking.paymentStatus === 'PAID') {
+      return booking.status === 'TICKETED'
+        ? 'Payment is verified as paid, and the order confirms ticket issuance.'
+        : 'Payment is verified as paid; the order did not confirm ticket issuance.';
+    }
+    return 'The reservation is verified. Payment is pending; no ticket was issued.';
   }
 
   async function api(path, method = 'GET', body) {
@@ -240,7 +251,7 @@
       state.session?.pending?.status === 'awaiting_approval' ? 'Review ready' :
       state.sessionId ? 'Conversation ready' : 'No session yet');
     const activities = {
-      message: 'Sending your message…', approve: 'Sending your confirmation…',
+      message: 'Sending your message…', approve: 'Sending your confirmation…', pay: 'Processing payment and checking the order…',
       cancel: 'Discarding the review request…', abort: 'Requesting the agent to stop…',
     };
     const activity = activities[state.request] ||
@@ -484,6 +495,14 @@
       reviewComplete(pending) && expiryTime(pending) > Date.now() && state.approvalRequestId !== pending.id;
   }
 
+  function canPay() {
+    const pending = state.session?.pending;
+    const booking = state.session?.booking;
+    return canSend() && state.session?.busy === false && pending?.status === 'completed'
+      && booking?.verified === true && booking.paymentStatus === 'PENDING'
+      && !booking.paymentAttempt;
+  }
+
   function canDiscard() {
     const pending = state.session?.pending;
     return canSend() && state.session?.busy === false && hasValue(pending?.id) &&
@@ -680,12 +699,36 @@
         fillDetails(ui.bookingDetails, [
           ['Booking ID', booking.bookingId], ['Confirmation', booking.confirmationNumber],
           ['Status', booking.status], ['Payment status', booking.paymentStatus],
+          ...(booking.payment ? [['Payment ID', booking.payment.paymentId], ['Transaction', booking.payment.transactionId]] : []),
           ['Traveler', fullName(booking.passenger)], ['Flight', booking.flightInfo?.flightNumber],
           ['From', booking.flightInfo?.departureAirport], ['To', booking.flightInfo?.arrivalAirport],
           ['Departs', booking.flightInfo?.departureTime], ['Arrives', booking.flightInfo?.arrivalTime],
           ['Amount', money(booking.amount, booking.currency)],
         ]);
       }
+    }
+    const paymentAttempt = booking?.paymentAttempt?.status ?? '';
+    const payAvailable = canPay();
+    ui.paymentActions.hidden = !booking?.verified || (!payAvailable && !['submitting', 'uncertain'].includes(paymentAttempt));
+    ui.payIssue.hidden = !payAvailable;
+    ui.payIssue.disabled = !payAvailable;
+    if (booking?.verified) setText(ui.payIssue, `Pay ${money(booking.amount, booking.currency)} and issue ticket`);
+    const paymentStatusText = paymentAttempt === 'submitting' ? 'Payment is processing. Do not retry.'
+      : paymentAttempt === 'uncertain' ? 'Payment status is uncertain. Do not retry; refresh the order.'
+        : payAvailable ? 'Uses the OTA test card. No card details are entered here.' : '';
+    setText(ui.paymentActionStatus, paymentStatusText);
+    const paid = booking?.paymentStatus === 'PAID' && booking?.verified;
+    const ticketed = paid && booking.status === 'TICKETED';
+    setText(ui.reservationDisclaimer, paid ? (ticketed ? 'Paid · Ticket issued' : 'Paid · Ticket status not returned')
+      : paymentAttempt === 'uncertain' ? 'Payment status uncertain' : 'Unpaid · Not ticketed');
+    setText(ui.paymentNote, paid
+      ? ticketed ? 'Payment and ticket status were independently verified against the order.' : 'Payment was independently verified. The order did not confirm ticket issuance.'
+      : paymentAttempt === 'uncertain' ? 'The payment request may have reached the service; the gateway blocks duplicate payment attempts.'
+        : 'The reservation is verified and awaiting payment.');
+    if (paid) {
+      setText(ui.bookingNote, ticketed
+        ? 'The order service verified payment and ticket status.'
+        : 'The order service verified payment; it returned the booking as confirmed, without a ticketed status.');
     }
     const skipped = pending?.status === 'completed' && Boolean(booking) &&
       (booking.demoFault?.kind === 'skip_manager_approval' || pending.demoFault?.kind === 'skip_manager_approval');
@@ -761,7 +804,7 @@
       if (version !== generation || id !== state.sessionId) return false;
       const wasBusy = state.session?.busy === true;
       const previousPendingId = state.session?.pending?.id;
-      const wasVerified = state.session?.booking?.verified === true;
+      const previousBooking = state.session?.booking;
       state.session = result;
       scheduleExpiry();
       state.recoveryNeeded = false;
@@ -770,7 +813,9 @@
       if (result.pending?.status === 'awaiting_approval' && result.pending.id !== previousPendingId) {
         announce('A booking review is ready in the trip panel. Review it before confirming.');
       }
-      if (result.booking?.verified === true && !wasVerified) announce('The reservation is verified. Payment remains pending; no ticket was issued.');
+      if (result.booking?.verified === true && (!previousBooking?.verified
+        || previousBooking.paymentStatus !== result.booking.paymentStatus
+        || previousBooking.status !== result.booking.status)) announce(bookingAnnouncement(result.booking));
       loaded = true;
     } catch (error) {
       if (version !== generation || id !== state.sessionId) return false;
@@ -977,6 +1022,11 @@
     state.approvalRequestId = requestId;
     if (injectSilentBug) state.bugAttemptKey = bugReviewKey();
     void sessionAction('approve', 'approve', { requestId, injectSilentBug }, 'Confirmation sent. Checking the approval and booking status; do not submit this request again.');
+  });
+  ui.payIssue.addEventListener('click', () => {
+    const pending = state.session?.pending;
+    if (!canPay() || !pending?.id) return;
+    void sessionAction('pay', 'pay', { requestId: pending.id }, 'Payment and ticket status were verified against the order.');
   });
   ui.cancel.addEventListener('click', () => {
     if (!canDiscard()) return;

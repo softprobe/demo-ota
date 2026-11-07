@@ -115,8 +115,12 @@
               <p class="small">Silent bug injected: manager approval was skipped. The booking API returned success.</p>
             </div>
             <dl id="booking-details" class="detail-list"></dl>
-            <p class="reservation-disclaimer">Unpaid · Not ticketed</p>
-            <p class="small muted">This reservation is not a travel document. No payment or ticket is issued.</p>
+            <div id="payment-actions" class="inline-actions" hidden>
+              <button id="pay-issue-button" class="button button-confirm" type="button">Pay and issue ticket</button>
+              <span id="payment-action-status" class="small muted" role="status"></span>
+            </div>
+            <p id="reservation-disclaimer" class="reservation-disclaimer">Unpaid · Not ticketed</p>
+            <p id="payment-note" class="small muted">The verified reservation is awaiting payment.</p>
           </section>
 
           <section id="pending-review" class="panel-section" aria-labelledby="pending-title" hidden>

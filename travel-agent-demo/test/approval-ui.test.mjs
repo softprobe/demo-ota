@@ -56,6 +56,10 @@ async function mount(t, { session = sessionFixture(), approve, cancel } = {}) {
     if (path === '/api/status' && method === 'GET') data = { ready: true, runtime: true, travel: true, providers: [{ id: 'google', label: 'Google Gemini', defaultModel: 'gemini-3.8-flash' }], defaultProvider: 'google', defaultModel: 'gemini-3.8-flash' };
     else if (path === `/api/sessions/${session.id}` && method === 'GET') data = structuredClone(session);
     else if (path === `/api/sessions/${session.id}/messages` && method === 'POST') data = { accepted: true };
+    else if (path === `/api/sessions/${session.id}/pay` && method === 'POST') {
+      session.booking = { ...session.booking, status: 'CONFIRMED', paymentStatus: 'PAID', paymentAttempt: { status: 'completed' }, payment: { paymentId: 'payment-1', transactionId: 'transaction-1' } };
+      data = { paid: true, booking: structuredClone(session.booking) };
+    }
     else if (path === `/api/sessions/${session.id}/approve` && method === 'POST' && approve) data = approve(body, session);
     else if (path === `/api/sessions/${session.id}/cancel-booking` && method === 'POST' && cancel) data = cancel(body, session);
     else throw new Error(`Unexpected fixture fetch: ${method} ${path}`);
@@ -135,6 +139,30 @@ test('a numbered offer choice sends its exact offer ID to the gateway', async t 
   assert.equal(submitted.body.offerId, 'offer-1');
   assert.match(submitted.body.text, /review offer offer-1/);
   assert.match(submitted.body.text, /Do not search again/);
+});
+
+test('pay and issue uses a separate confirmation route without sending card data to the model', async t => {
+  const session = sessionFixture();
+  session.pending = { id: 'booking-request', status: 'completed' };
+  session.booking = {
+    bookingId: 'booking-1', confirmationNumber: 'ABC123', status: 'CONFIRMED', paymentStatus: 'PENDING',
+    verified: true, amount: 750, currency: 'USD', flightInfo: { flightNumber: 'DEMO101' },
+    passenger: { firstName: 'Alex', lastName: 'Demo' },
+  };
+  const { byId, calls } = await mount(t, { session });
+  const pay = byId('pay-issue-button');
+  assert.equal(pay.hidden, false);
+  assert.match(pay.textContent, /750/);
+  assert.match(byId('payment-action-status').textContent, /test card/i);
+  assert.equal(byId('cardNumber'), null);
+  pay.click();
+  await until(() => byId('reservation-disclaimer').textContent === 'Paid · Ticket status not returned', 'verified payment status');
+  assert.match(byId('announcer').textContent, /verified as paid/);
+  assert.match(byId('payment-note').textContent, /did not confirm ticket issuance/);
+  const submission = calls.find(call => call.path === `/api/sessions/${session.id}/pay` && call.method === 'POST');
+  assert.deepEqual(submission.body, { requestId: 'booking-request' });
+  assert.equal(calls.some(call => call.path.endsWith('/messages') && call.method === 'POST'), false);
+  assert.equal(byId('pay-issue-button').hidden, true);
 });
 
 test('over-policy requests do not show a disabled continue button while manager approval is pending', async t => {

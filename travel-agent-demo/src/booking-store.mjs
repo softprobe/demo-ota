@@ -86,7 +86,7 @@ function loadSnapshot(data) {
     const request = session.pending;
     check(isRecord(request));
     const hasResult = Object.hasOwn(request, 'result');
-    check(exactKeys(request, ['id', 'status', 'offer', 'passenger', 'expiresAt', ...(hasResult ? ['result'] : []), ...(Object.hasOwn(request, 'managerApproval') ? ['managerApproval'] : []), ...(Object.hasOwn(request, 'demoFault') ? ['demoFault'] : [])]));
+    check(exactKeys(request, ['id', 'status', 'offer', 'passenger', 'expiresAt', ...(hasResult ? ['result'] : []), ...(Object.hasOwn(request, 'managerApproval') ? ['managerApproval'] : []), ...(Object.hasOwn(request, 'demoFault') ? ['demoFault'] : []), ...(Object.hasOwn(request, 'payment') ? ['payment'] : [])]));
     check(typeof request.id === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(request.id)
       && !requestIds.has(request.id));
     requestIds.add(request.id);
@@ -114,17 +114,25 @@ function loadSnapshot(data) {
           && isDeepStrictEqual(request.result.demoFault, request.demoFault));
       }
     }
+    if (Object.hasOwn(request, 'payment')) {
+      const payment = request.payment;
+      check(request.status === 'completed' && isRecord(payment) && ['submitting', 'uncertain', 'completed'].includes(payment.status));
+      check(payment.status === 'completed'
+        ? exactKeys(payment, ['status', 'result']) && validPaymentResult(payment.result, request)
+        : exactKeys(payment, ['status']));
+    }
   }
   return new Map(data.sessions);
 }
 
-function matchesBooking(result, request) {
+function matchesBooking(result, request, paymentStatus = 'PENDING') {
   const { offer, passenger } = request;
   const flight = result?.flightInfo;
   return isRecord(result) && result.verified === true
     && validText(result.bookingId)
     && typeof result.confirmationNumber === 'string' && /^[A-Z0-9]{6}$/.test(result.confirmationNumber)
-    && result.status === 'CONFIRMED' && result.paymentStatus === 'PENDING'
+    && (paymentStatus === 'PAID' ? ['TICKETED', 'CONFIRMED'].includes(result.status) : result.status === 'CONFIRMED')
+    && result.paymentStatus === paymentStatus
     && result.amount === offer.total && result.currency === offer.currency
     && validPassenger(result.passenger)
     && result.passenger.firstName === passenger.firstName && result.passenger.lastName === passenger.lastName
@@ -132,9 +140,24 @@ function matchesBooking(result, request) {
     && flight?.departureAirport === offer.origin && flight?.arrivalAirport === offer.destination
     && flight?.departureTime === offer.departureTime && flight?.arrivalTime === offer.arrivalTime
     && flight?.cabinClass === offer.cabinClass
+    && (result.paymentInfo?.paymentStatus === undefined || result.paymentInfo.paymentStatus === paymentStatus)
     && (flight.fareId === undefined || flight.fareId === offer.fareId)
     && (flight.airlineName === undefined || flight.airlineName === offer.airlineName)
     && ['confirmationNumber', 'bookingId'].every(key => request.result?.[key] == null || request.result[key] === result[key]);
+}
+
+function validPaymentResult(value, request) {
+  if (!exactKeys(value, ['payment', 'booking']) || !isRecord(value.payment) || !isRecord(value.booking)) return false;
+  const payment = value.payment;
+  return exactKeys(payment, ['paymentId', 'transactionId', 'status', 'bookingId', 'amount', 'currency', 'paymentMethod', 'paymentDate'])
+    && validText(payment.paymentId) && (payment.transactionId === null || validText(payment.transactionId)) && payment.status === 'SUCCESS'
+    && payment.bookingId === request.result?.bookingId && payment.amount === request.offer.total
+    && payment.currency === request.offer.currency && payment.paymentMethod === 'CREDIT_CARD'
+    && (payment.paymentDate === null || validTimestamp(payment.paymentDate))
+    && matchesBooking(value.booking, request, 'PAID')
+    && value.booking.bookingId === payment.bookingId && value.booking.amount === payment.amount
+    && value.booking.currency === payment.currency && value.booking.paymentInfo?.paymentId === payment.paymentId
+    && value.booking.paymentInfo?.paymentMethod === payment.paymentMethod;
 }
 
 /**
@@ -201,6 +224,10 @@ export class BookingStore {
           changed = true;
         } else if (request && ['awaiting_approval', 'approved'].includes(request.status) && this.#time() >= request.expiresAt) {
           request.status = 'expired';
+          changed = true;
+        }
+        if (request?.payment?.status === 'submitting') {
+          request.payment = { status: 'uncertain' };
           changed = true;
         }
       }
@@ -293,7 +320,44 @@ export class BookingStore {
   }
 
   getBooking(sessionId) {
-    return structuredClone(this.#pending(sessionId)?.result ?? null);
+    const request = this.#pending(sessionId);
+    if (!request?.result) return null;
+    const attempt = request.payment ?? null;
+    const booking = attempt?.status === 'completed' ? { ...request.result, ...attempt.result.booking } : { ...request.result };
+    if (request.result.managerApproval) booking.managerApproval = structuredClone(request.result.managerApproval);
+    if (request.result.demoFault) booking.demoFault = structuredClone(request.result.demoFault);
+    if (attempt) booking.paymentAttempt = { status: attempt.status };
+    if (attempt?.status === 'uncertain') booking.paymentStatus = 'UNKNOWN';
+    if (attempt?.status === 'completed') booking.payment = structuredClone(attempt.result.payment);
+    return structuredClone(booking);
+  }
+
+  beginPayment(sessionId, requestId) {
+    const request = this.#request(sessionId, requestId);
+    if (request.status !== 'completed' || !request.result?.verified) throw fail(409, 'Only a verified reservation can be paid.');
+    if (request.payment?.status === 'completed') return { alreadyCompleted: true, booking: this.getBooking(sessionId) };
+    if (request.payment) throw fail(409, 'Payment outcome is not clear. Check the order; do not retry payment.');
+    if (request.result.paymentStatus !== 'PENDING') throw fail(409, 'This reservation is not awaiting payment.');
+    this.#setPending(sessionId, { ...request, payment: { status: 'submitting' } });
+    return { alreadyCompleted: false, request: this.getPending(sessionId) };
+  }
+
+  completePayment(sessionId, requestId, result) {
+    const request = this.#request(sessionId, requestId);
+    if (request.status !== 'completed' || request.payment?.status !== 'submitting') throw fail(409, 'A matching payment attempt is not in progress.');
+    let copy;
+    try { copy = cloneJSON(result); } catch { throw fail(409, 'Payment result must contain only JSON values.'); }
+    if (!validPaymentResult(copy, request)) throw fail(409, 'Payment and independent order read-back must verify this exact booking.');
+    this.#setPending(sessionId, { ...request, payment: { status: 'completed', result: copy } });
+    return this.getBooking(sessionId);
+  }
+
+  failPayment(sessionId, requestId) {
+    const request = this.#sessions.get(sessionId)?.pending;
+    if (!request || request.id !== requestId || request.payment?.status !== 'submitting') return;
+    const uncertain = { ...request, payment: { status: 'uncertain' } };
+    try { this.#setPending(sessionId, uncertain); }
+    catch { this.#sessions.set(sessionId, uncertain); }
   }
 
   #pending(sessionId) {
@@ -359,10 +423,26 @@ export class BookingStore {
     const request = this.#request(sessionId, requestId);
     let copy;
     try { copy = cloneJSON(result); } catch { throw fail(409, 'Read-back must return a JSON booking result.'); }
+    if (request.status === 'completed' && request.payment?.status === 'completed') {
+      if (!matchesBooking(copy, request, 'PAID') || copy.bookingId !== request.payment.result.payment.bookingId
+        || copy.paymentInfo?.paymentId !== request.payment.result.payment.paymentId) throw fail(409, 'Read-back must verify the paid booking and matching payment.');
+      return this.getBooking(sessionId);
+    }
+    if (request.status === 'completed' && request.payment?.status === 'uncertain' && matchesBooking(copy, request, 'PAID')) {
+      const payment = {
+        paymentId: copy.paymentInfo.paymentId, transactionId: null, status: 'SUCCESS',
+        bookingId: copy.bookingId, amount: copy.amount, currency: copy.currency,
+        paymentMethod: copy.paymentInfo.paymentMethod, paymentDate: copy.paymentInfo.paymentDate ?? null,
+      };
+      const verifiedPayment = { payment, booking: copy };
+      if (!validPaymentResult(verifiedPayment, request)) throw fail(409, 'Paid order read-back does not match this booking.');
+      this.#setPending(sessionId, { ...request, payment: { status: 'completed', result: verifiedPayment } });
+      return this.getBooking(sessionId);
+    }
     if (!['uncertain', 'completed'].includes(request.status) || !matchesBooking(copy, request)) {
       throw fail(409, 'Read-back must verify the exact pending booking and any known reference.');
     }
-    if (request.status === 'completed') return structuredClone(request.result);
+    if (request.status === 'completed') return this.getBooking(sessionId);
     if (request.demoFault?.kind === 'skip_manager_approval') {
       copy.managerApproval = structuredClone(request.managerApproval);
       copy.demoFault = structuredClone(request.demoFault);

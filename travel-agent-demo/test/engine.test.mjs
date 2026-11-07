@@ -77,6 +77,10 @@ test('a selected offer removes search from the model toolset until preparation s
   await engine.request(`/session/${session.id}/message`, { method: 'POST', body: { parts: [{ type: 'text', text: 'Alex Demo' }], selectedOfferId: 'offer-1' } });
   assert.deepEqual(calls[1].activeTools, ['travel_prepare', 'travel_book', 'travel_order']);
   assert.equal(engine.sessions.get(session.id).selectedOfferId, null);
+  await engine.request(`/session/${session.id}/message`, {
+    method: 'POST', body: { parts: [{ type: 'text', text: 'User confirmed this exact booking.' }], allowedTools: ['travel_book', 'travel_order'] },
+  });
+  assert.deepEqual(calls[2].activeTools, ['travel_book', 'travel_order']);
   await engine.stop();
 });
 

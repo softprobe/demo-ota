@@ -19,12 +19,28 @@ function verifiedBooking() {
   return {
     bookingId: 'booking-1', confirmationNumber: 'ABC123', status: 'CONFIRMED',
     paymentStatus: 'PENDING', verified: true, amount: offer.total, currency: offer.currency,
+    paymentInfo: { paymentId: null, paymentMethod: null, paymentStatus: 'PENDING', paymentDate: null },
     passenger: { ...passenger },
     flightInfo: {
       flightId: offer.flightId, flightNumber: offer.flightNumber,
       departureAirport: offer.origin, arrivalAirport: offer.destination,
       departureTime: offer.departureTime, arrivalTime: offer.arrivalTime, cabinClass: offer.cabinClass,
     },
+  };
+}
+
+function paidResult(request) {
+  const booking = {
+    ...verifiedBooking(), status: 'TICKETED', paymentStatus: 'PAID',
+    paymentInfo: { paymentId: 'payment-1', paymentMethod: 'CREDIT_CARD', paymentStatus: 'PAID', paymentDate: '2026-11-06T12:00:00' },
+  };
+  return {
+    payment: {
+      paymentId: 'payment-1', transactionId: 'transaction-1', status: 'SUCCESS',
+      bookingId: request.result.bookingId, amount: offer.total, currency: offer.currency,
+      paymentMethod: 'CREDIT_CARD', paymentDate: '2026-11-06T12:00:00',
+    },
+    booking,
   };
 }
 
@@ -71,6 +87,42 @@ test('initial submission requires the same verified identity as later read-back'
     await assert.rejects(() => store.submit('session-a', request.id, async () => result), hasStatus(409));
     assert.equal(store.getPending('session-a').status, 'uncertain');
   }
+});
+
+test('payment persists a one-shot barrier and exposes the verified paid order', async () => {
+  const { store, request } = prepared();
+  store.approve('session-a', request.id);
+  await store.submit('session-a', request.id, async () => verifiedBooking());
+  const attempt = store.beginPayment('session-a', request.id);
+  assert.equal(attempt.alreadyCompleted, false);
+  assert.equal(attempt.request.payment.status, 'submitting');
+  assert.equal(store.getBooking('session-a').paymentAttempt.status, 'submitting');
+  const result = store.completePayment('session-a', request.id, paidResult(attempt.request));
+  assert.equal(result.status, 'TICKETED');
+  assert.equal(result.paymentStatus, 'PAID');
+  assert.equal(result.payment.paymentId, 'payment-1');
+  assert.equal(result.paymentAttempt.status, 'completed');
+  assert.equal(store.beginPayment('session-a', request.id).alreadyCompleted, true);
+  assert.equal(store.getBooking('session-a').paymentStatus, 'PAID');
+});
+
+test('uncertain and restarted payments cannot be repeated', async t => {
+  const { store, options } = persistentStore(t);
+  store.setOffers('session-a', [offer]);
+  const preparedRequest = store.prepare('session-a', { offerId: offer.id, passenger });
+  store.approve('session-a', preparedRequest.id);
+  await store.submit('session-a', preparedRequest.id, async () => verifiedBooking());
+  store.beginPayment('session-a', preparedRequest.id);
+  const restarted = new BookingStore(options);
+  assert.equal(restarted.getBooking('session-a').paymentAttempt.status, 'uncertain');
+  assert.throws(() => restarted.beginPayment('session-a', preparedRequest.id), hasStatus(409));
+  const reconciled = restarted.completeReadBack('session-a', preparedRequest.id, paidResult(restarted.getPending('session-a')).booking);
+  assert.equal(reconciled.paymentStatus, 'PAID');
+  assert.equal(reconciled.paymentAttempt.status, 'completed');
+  assert.equal(reconciled.payment.transactionId, null);
+  const persisted = new BookingStore(options);
+  assert.equal(persisted.getPending('session-a').payment.status, 'completed');
+  assert.equal(persisted.getBooking('session-a').paymentStatus, 'PAID');
 });
 
 test('getOffers exposes only defensive copies of the session search results', () => {
@@ -623,7 +675,7 @@ test('a missing booking callback is rejected before changing approval state', as
 test('the public store surface and pending schema stay limited to the agreed contract', () => {
   assert.deepEqual(Object.getOwnPropertyNames(BookingStore.prototype).sort(), [
     'constructor', 'setOffers', 'getOffers', 'prepare', 'getPending', 'getBooking',
-    'approve', 'enableSilentBug', 'cancel', 'submit', 'completeReadBack',
+    'approve', 'enableSilentBug', 'cancel', 'submit', 'completeReadBack', 'beginPayment', 'completePayment', 'failPayment',
   ].sort());
   const { store, request } = prepared();
   assert.deepEqual(Object.keys(request).sort(), ['id', 'status', 'offer', 'passenger', 'expiresAt', 'managerApproval'].sort());

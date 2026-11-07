@@ -17,19 +17,39 @@ async function fixture(t, { travel, pending = null, initialOffers = [] } = {}) {
   const savedPending = pending;
   const offers = new Map();
   let currentPending = savedPending;
+  let currentBooking = savedPending?.result ?? null;
   let approvalCount = 0;
   let searchCount = 0;
   const store = {
     getPending: () => currentPending,
     getOffers: id => offers.get(id) ?? initialOffers,
-    getBooking: () => null,
+    getBooking: () => currentBooking,
     setOffers: (id, list) => offers.set(id, list),
     prepare: (id, input) => {
       currentPending = { id: 'prepared-review', status: 'awaiting_approval', offer: (offers.get(id) ?? initialOffers).find(offer => offer.id === input.offerId), passenger: input.passenger };
       return currentPending;
     },
-    approve: () => { approvalCount += 1; currentPending.managerApproval.status = 'pending'; },
+    approve: () => {
+      approvalCount += 1;
+      currentPending = { ...currentPending, status: 'approved', managerApproval: { ...currentPending.managerApproval,
+        ...(currentPending.managerApproval.status === 'not_requested' ? { status: 'pending' } : {}),
+      } };
+    },
     cancel: () => {},
+    beginPayment: (id, requestId) => {
+      if (!currentPending || currentPending.id !== requestId) throw new Error('Booking request not found');
+      if (currentPending.payment?.status === 'completed') return { alreadyCompleted: true, booking: currentBooking };
+      if (currentPending.payment) throw new Error('Payment outcome is not clear');
+      currentPending = { ...currentPending, payment: { status: 'submitting' } };
+      return { alreadyCompleted: false, request: currentPending };
+    },
+    completePayment: (id, requestId, result) => {
+      if (!currentPending || currentPending.id !== requestId) throw new Error('Booking request not found');
+      currentPending = { ...currentPending, payment: { status: 'completed', result } };
+      currentBooking = { ...result.booking, paymentAttempt: { status: 'completed' }, payment: result.payment };
+      return currentBooking;
+    },
+    failPayment: (id, requestId) => { if (currentPending?.id === requestId) currentPending = { ...currentPending, payment: { status: 'uncertain' } }; },
   };
   let created = 0;
   const modelPrompts = [];
@@ -44,7 +64,7 @@ async function fixture(t, { travel, pending = null, initialOffers = [] } = {}) {
     if (path.endsWith('/abort')) return true;
     return {};
   } };
-  const resolvedTravel = travel ? { ...travel, async search(args) { searchCount += 1; return travel.search(args); } } : {
+  const resolvedTravel = travel ? { ...travel, async search(args) { searchCount += 1; return travel.search ? travel.search(args) : []; } } : {
     baseUrl: `http://127.0.0.1:${upstream.address().port}`,
     async search() { searchCount += 1; return [{ id: 'offer-1', flightId: 'flight-1', fareId: 'fare-1' }]; },
   };
@@ -156,6 +176,46 @@ test('traveler confirmation above $1,000 waits for manager approval without anot
   assert.equal((await response.json()).awaitingManagerApproval, true);
   assert.equal(f.approvalCount(), 1);
   assert.equal(f.modelPrompts.length, 0);
+});
+
+test('booking confirmation exposes only booking and order tools to the model', async t => {
+  const pending = {
+    id: 'abcdefab-cdef-4abc-8def-abcdefabcdef', status: 'awaiting_approval',
+    offer: { currency: 'USD', total: 750 }, managerApproval: { status: 'not_required' },
+  };
+  const f = await fixture(t, { pending });
+  const session = await (await f.post('/agent/api/sessions', {})).json();
+  const response = await f.post(`/agent/api/sessions/${session.id}/approve`, { requestId: pending.id, injectSilentBug: false });
+  assert.equal(response.status, 202);
+  assert.deepEqual(f.modelPrompts.at(-1).allowedTools, ['travel_book', 'travel_order']);
+  const blockedSearch = await f.post('/agent/internal/travel/search', { sessionId: session.id, args: { origin: 'CDG', destination: 'LHR', date: '2026-11-30' } }, { Authorization: 'Bearer fixture-capability', Origin: null });
+  assert.equal(blockedSearch.status, 409);
+  assert.match((await blockedSearch.json()).error, /already has a confirmed or submitted booking/i);
+  assert.equal(f.searchCount(), 0);
+});
+
+test('the payment route verifies one existing booking and never invokes flight search', async t => {
+  const pending = {
+    id: 'abcdefab-cdef-4abc-8def-abcdefabcdef', status: 'completed',
+    offer: { currency: 'USD', total: 750 },
+    result: { bookingId: 'booking-1', confirmationNumber: 'ABC123', status: 'CONFIRMED', paymentStatus: 'PENDING', verified: true },
+  };
+  let paymentCalls = 0;
+  const paymentResult = {
+    payment: { paymentId: 'payment-1', transactionId: 'transaction-1', status: 'SUCCESS', bookingId: 'booking-1', amount: 750, currency: 'USD', paymentMethod: 'CREDIT_CARD', paymentDate: null },
+    booking: { bookingId: 'booking-1', confirmationNumber: 'ABC123', status: 'TICKETED', paymentStatus: 'PAID', verified: true },
+  };
+  const f = await fixture(t, { pending, travel: { async payAndVerify(request) { paymentCalls += 1; assert.equal(request.id, pending.id); return paymentResult; } } });
+  const session = await (await f.post('/agent/api/sessions', {})).json();
+  const first = await f.post(`/agent/api/sessions/${session.id}/pay`, { requestId: pending.id });
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).booking.payment.paymentId, 'payment-1');
+  const repeated = await f.post(`/agent/api/sessions/${session.id}/pay`, { requestId: pending.id });
+  assert.equal(repeated.status, 200);
+  assert.equal((await repeated.json()).paid, true);
+  assert.equal(paymentCalls, 1);
+  assert.equal(f.searchCount(), 0);
+  assert.deepEqual(f.modelPrompts, []);
 });
 
 test('the original OTA API remains reachable through the root proxy', async t => {

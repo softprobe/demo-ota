@@ -41,29 +41,33 @@ export class TravelAPI {
     return offers;
   }
 
-  validateBooking(data, request, expectedConfirmation, expectedBookingId) {
+  validateBooking(data, request, expectedConfirmation, expectedBookingId, { paymentStatus = 'PENDING', paymentId = null } = {}) {
     const { offer, passenger } = request;
     const f = data?.flightInfo;
     const p = data?.paymentInfo;
     const traveler = data?.passengers?.[0];
+    const returnedPaymentStatusValid = paymentStatus === 'ANY' ? ['PENDING', 'PAID'].includes(p?.paymentStatus) : p?.paymentStatus === paymentStatus;
+    const returnedBookingStatusValid = p?.paymentStatus === 'PAID' ? ['TICKETED', 'CONFIRMED'].includes(data?.status) : data?.status === 'CONFIRMED';
     const valid = typeof data?.bookingId === 'string' && data.bookingId.length > 0 && /^[A-Z0-9]{6}$/.test(data.confirmationNumber ?? '')
       && (!expectedConfirmation || data.confirmationNumber === expectedConfirmation)
       && (!expectedBookingId || data.bookingId === expectedBookingId)
-      && data.status === 'CONFIRMED' && f?.flightId === offer.flightId && f?.flightNumber === offer.flightNumber
+      && returnedBookingStatusValid
+      && f?.flightId === offer.flightId && f?.flightNumber === offer.flightNumber
       && (f?.fareId === undefined || f.fareId === offer.fareId) && (data.fareId === undefined || data.fareId === offer.fareId)
       && f?.departureAirport === offer.origin && f?.arrivalAirport === offer.destination
       && f?.departureTime === offer.departureTime && f?.arrivalTime === offer.arrivalTime
-      && f?.cabinClass === offer.cabinClass && p?.currency === offer.currency && p?.paymentStatus === 'PENDING'
+      && f?.cabinClass === offer.cabinClass && p?.currency === offer.currency && returnedPaymentStatusValid
+      && (!paymentId || p?.paymentId === paymentId)
       && Number.isFinite(p?.amount) && p.amount > 0 && Math.round(p.amount * 100) === Math.round(offer.total * 100)
       && data.passengers?.length === 1 && traveler?.passengerType === 'ADULT' && traveler?.firstName === passenger.firstName && traveler?.lastName === passenger.lastName;
     if (!valid) throw new Error('Booking verification failed: returned flight, traveler, price, currency, or payment state does not match the approved request.');
-    return { bookingId: data.bookingId, confirmationNumber: data.confirmationNumber, status: data.status, paymentStatus: p.paymentStatus, verified: true, flightInfo: f, amount: p.amount, currency: p.currency, passenger: { firstName: traveler.firstName, lastName: traveler.lastName } };
+    return { bookingId: data.bookingId, confirmationNumber: data.confirmationNumber, status: data.status, paymentStatus: p.paymentStatus, verified: true, flightInfo: f, amount: p.amount, currency: p.currency, passenger: { firstName: traveler.firstName, lastName: traveler.lastName }, paymentInfo: { paymentId: p.paymentId ?? null, paymentMethod: p.paymentMethod ?? null, paymentStatus: p.paymentStatus, paymentDate: p.paymentDate ?? null } };
   }
 
-  async queryAndVerify(request, confirmationNumber, expectedBookingId = request.result?.bookingId) {
+  async queryAndVerify(request, confirmationNumber, expectedBookingId = request.result?.bookingId, payment = {}) {
     if (!/^[A-Z0-9]{6}$/.test(confirmationNumber ?? '')) throw new Error('A valid known confirmation number is required for read-back.');
     const data = await this.post('/api/flights/orders/query', { confirmationNumber, passengerLastName: request.passenger.lastName });
-    return this.validateBooking(data, request, confirmationNumber, expectedBookingId);
+    return this.validateBooking(data, request, confirmationNumber, expectedBookingId, payment);
   }
 
   async bookAndVerify(request) {
@@ -85,6 +89,50 @@ export class TravelAPI {
         error.confirmationNumber = created.confirmationNumber;
         error.result = { bookingId: typeof created.bookingId === 'string' ? created.bookingId : undefined, confirmationNumber: created.confirmationNumber, verified: false, status: 'UNVERIFIED', paymentStatus: 'UNKNOWN' };
       }
+      throw error;
+    }
+  }
+
+  async payAndVerify(request) {
+    const booking = request?.result;
+    const { offer, passenger } = request ?? {};
+    if (!booking?.verified || booking.paymentStatus !== 'PENDING' || !booking.bookingId || !/^[A-Z0-9]{6}$/.test(booking.confirmationNumber ?? '')
+      || !offer || !passenger || booking.amount !== offer.total || booking.currency !== offer.currency) {
+      throw new Error('Only a verified, unpaid reservation can be paid.');
+    }
+    let paymentError;
+    try {
+      await this.post('/api/flights/payandissue', {
+        bookingId: booking.bookingId,
+        paymentMethod: 'CREDIT_CARD',
+        amount: Number(offer.total).toFixed(2),
+        currency: offer.currency,
+        paymentDetails: {
+          cardNumber: '4111111111111111',
+          cardHolderName: `${passenger.firstName} ${passenger.lastName}`,
+          expiryDate: '12/28',
+          cvv: '123',
+        },
+      });
+    } catch (error) {
+      paymentError = error;
+    }
+    try {
+      const paidBooking = await this.queryAndVerify(request, booking.confirmationNumber, booking.bookingId, { paymentStatus: 'PAID' });
+      const paymentId = paidBooking.paymentInfo?.paymentId;
+      if (!paymentId) throw new Error('Paid order read-back did not return a payment reference.');
+      return {
+        payment: {
+          paymentId, transactionId: null,
+          status: 'SUCCESS', bookingId: paidBooking.bookingId, amount: paidBooking.amount, currency: paidBooking.currency,
+          paymentMethod: paidBooking.paymentInfo.paymentMethod ?? 'CREDIT_CARD', paymentDate: paidBooking.paymentInfo.paymentDate,
+        },
+        booking: paidBooking,
+      };
+    } catch (cause) {
+      const detail = paymentError ? `${paymentError.message}; ${cause.message}` : cause.message;
+      const error = new Error(`Payment could not be independently verified. Do not retry payment. ${detail}`, { cause });
+      error.statusCode = 502;
       throw error;
     }
   }

@@ -51,6 +51,7 @@ export function createGateway({ root, engine, store, internalToken, travel = new
   }
   function checkPrompt(record) {
     if ([...sessions.values()].some(item => item.stopping)) throw publicError('An earlier turn has not been confirmed stopped. No further model requests are allowed yet.', 409);
+    if (record.paymentBusy) throw publicError('Wait for the payment and order check to finish before sending another message.', 409);
     if (record.busy) throw publicError('Wait for the current response or stop it first.', 409);
     if (maxConversations !== null && !record.used && [...sessions.values()].filter(item => item.used).length >= maxConversations) throw publicError('The approved live-test conversation budget is used. Request approval before enabling more model tests.', 409);
   }
@@ -79,13 +80,13 @@ export function createGateway({ root, engine, store, internalToken, travel = new
       throw publicError(record.lastError ?? 'Stop is not confirmed.', 409);
     }
   }
-  function queuePrompt(record, text) {
+  function queuePrompt(record, text, allowedTools) {
     checkPrompt(record);
     record.used = true; record.turnCount += 1; record.busy = true; record.lastError = null;
     record.generation = (record.generation ?? 0) + 1;
     const generation = record.generation;
     persist();
-    void engine.request(`/session/${encodeURIComponent(record.id)}/message`, { method: 'POST', body: { parts: [{ type: 'text', text }], selectedOfferId: record.selectedOfferId ?? null } })
+    void engine.request(`/session/${encodeURIComponent(record.id)}/message`, { method: 'POST', body: { parts: [{ type: 'text', text }], selectedOfferId: record.selectedOfferId ?? null, ...(allowedTools ? { allowedTools } : {}) } })
       .then(result => {
         if (record.generation !== generation) return;
         const error = result?.info?.error;
@@ -140,10 +141,14 @@ export function createGateway({ root, engine, store, internalToken, travel = new
         if (operation === 'search') {
           requireKeys(args, ['origin', 'destination', 'date']);
           if (record.selectedOfferId) throw publicError('The traveler selected a flight. Reuse that offer instead of searching again.', 409);
+          const pending = store.getPending(sessionId);
+          if (['approved', 'submitting', 'completed', 'uncertain'].includes(pending?.status)) throw publicError('This conversation already has a confirmed or submitted booking. Do not search or replace it.', 409);
           if (record.preparedGeneration === generation) throw publicError('A booking review was just prepared. Start a new agent message before searching again.', 409);
           const offers = await travel.search(args);
           requireCurrentTurn();
           if (record.selectedOfferId) throw publicError('The traveler selected a flight. Reuse that offer instead of searching again.', 409);
+          const latestPending = store.getPending(sessionId);
+          if (['approved', 'submitting', 'completed', 'uncertain'].includes(latestPending?.status)) throw publicError('This conversation already has a confirmed or submitted booking. Do not search or replace it.', 409);
           if (record.preparedGeneration === generation) throw publicError('A booking review was just prepared. Start a new agent message before searching again.', 409);
           store.setOffers(sessionId, offers);
           result = { offers: offers.map(offer => ({ ...offer, offerId: offer.id })), constraints: 'One-way economy, one adult. Synthetic inventory; no payment.' };
@@ -162,7 +167,10 @@ export function createGateway({ root, engine, store, internalToken, travel = new
           const request = store.getPending(sessionId);
           const reference = request?.result?.confirmationNumber;
           if (!reference) throw publicError('No known reservation reference exists. Do not repeat an uncertain booking.');
-          result = await travel.queryAndVerify(request, reference);
+          const payment = request.payment?.status === 'completed'
+            ? { paymentStatus: 'PAID', paymentId: request.payment.result.payment.paymentId }
+            : ['submitting', 'uncertain'].includes(request.payment?.status) ? { paymentStatus: 'ANY' } : {};
+          result = await travel.queryAndVerify(request, reference, request.result?.bookingId, payment);
           result = store.completeReadBack(sessionId, request.id, result);
         }
         return reply(res, 200, result);
@@ -195,11 +203,11 @@ export function createGateway({ root, engine, store, internalToken, travel = new
         catch (error) { throw publicError(error.message); }
         const created = await engine.request('/session', { method: 'POST', body: selection });
         if (!/^ses_[A-Za-z0-9_-]+$/.test(created?.id ?? '')) throw new Error('The local model runtime did not return a valid session ID.');
-        const record = { id: created.id, provider: created.provider ?? selection.provider, model: created.model ?? selection.model, used: false, turnCount: 0, busy: false, stopping: false, generation: 0, lastError: null, createdAt: new Date().toISOString() };
+        const record = { id: created.id, provider: created.provider ?? selection.provider, model: created.model ?? selection.model, used: false, turnCount: 0, busy: false, stopping: false, paymentBusy: false, generation: 0, lastError: null, createdAt: new Date().toISOString() };
         sessions.set(created.id, record); persist();
         return reply(res, 201, { id: created.id, provider: record.provider, model: record.model });
       }
-      const match = route.match(/^\/api\/sessions\/(ses_[A-Za-z0-9_-]+)(?:\/(messages|approve|cancel-booking|abort))?$/);
+      const match = route.match(/^\/api\/sessions\/(ses_[A-Za-z0-9_-]+)(?:\/(messages|approve|cancel-booking|abort|pay))?$/);
       if (!match) throw publicError('Not found.', 404);
       const record = getSession(match[1]);
       const action = match[2];
@@ -226,7 +234,9 @@ export function createGateway({ root, engine, store, internalToken, travel = new
         } else if (record.selectedOfferId && !/^[A-Za-z][A-Za-z' -]{0,9}\s+[A-Za-z][A-Za-z' -]{0,9}$/.test(message)) {
           delete record.selectedOfferId;
         }
-        queuePrompt(record, message);
+        const pending = store.getPending(record.id);
+        const allowedTools = ['approved', 'submitting', 'completed', 'uncertain'].includes(pending?.status) ? ['travel_order'] : undefined;
+        queuePrompt(record, message, allowedTools);
         return reply(res, 202, { accepted: true });
       }
       if (action === 'approve') {
@@ -245,8 +255,28 @@ export function createGateway({ root, engine, store, internalToken, travel = new
         const continuation = injectSilentBug === true
           ? `Controlled demo fault: the traveler explicitly enabled the skipped-manager-approval simulation and confirmed this synthetic booking. Manager approval has NOT been granted. For this controlled simulation only, use travel_book with exactly requestId ${requestId}. The gateway will bypass only the manager-approval gate. Do not change the flight, fare, or traveler; do not prepare another request. Report only the actual tool result and the pending payment. This is an injected demo failure, not permission for future bookings.`
           : `I clicked Confirm demo booking in the browser. The local gateway approved requestId ${requestId}. Use travel_book with exactly that requestId, then report the independently verified reservation and pending payment. Do not prepare or book another request.`;
-        queuePrompt(record, continuation);
+        queuePrompt(record, continuation, ['travel_book', 'travel_order']);
         return reply(res, 202, { accepted: true });
+      }
+      if (action === 'pay') {
+        const { requestId } = await readJSON(req, ['requestId']);
+        if (record.busy || record.paymentBusy || record.stopping) throw publicError('Wait for the current agent action before paying.', 409);
+        if (typeof requestId !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(requestId)) throw publicError('A valid booking requestId is required.');
+        const before = store.getPending(record.id);
+        if (!before || before.id !== requestId) throw publicError('Booking request not found in this session.', 404);
+        const attempt = store.beginPayment(record.id, requestId);
+        if (attempt.alreadyCompleted) return reply(res, 200, { paid: true, booking: attempt.booking });
+        record.paymentBusy = true;
+        try {
+          const result = await travel.payAndVerify(attempt.request);
+          const booking = store.completePayment(record.id, requestId, result);
+          return reply(res, 200, { paid: true, booking });
+        } catch (error) {
+          store.failPayment(record.id, requestId);
+          throw error;
+        } finally {
+          record.paymentBusy = false;
+        }
       }
       if (action === 'cancel-booking') {
         const { requestId } = await readJSON(req, ['requestId']);
