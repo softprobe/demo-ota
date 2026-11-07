@@ -25,6 +25,7 @@ if (existsSync(lockPath)) {
 }
 writeFileSync(lockPath, String(process.pid), { flag: 'wx', mode: 0o600 });
 const internalToken = randomBytes(32).toString('hex');
+let softprobeClient;
 const engine = new VercelAIEngine({ root, internalToken, gatewayPort: port });
 let server;
 let stopping = false;
@@ -35,6 +36,7 @@ function stop(code = 0) {
   stopPromise ??= (async () => {
     await Promise.all([
       engine.stop(),
+      softprobeClient?.shutdown(),
       new Promise((resolve, reject) => {
         if (!server) return resolve();
         server.close(error => error && error.code !== 'ERR_SERVER_NOT_RUNNING' ? reject(error) : resolve());
@@ -54,6 +56,16 @@ async function start() {
   if (stopping) return;
   const store = new BookingStore({ filePath: join(runtime, 'bookings.json') });
   const health = await engine.start();
+  if (stopping) return;
+  if (process.env.SOFTPROBE_PUBLIC_KEY && process.env.SOFTPROBE_BASE_URL) {
+    const [{ registerTelemetry }, { SoftprobeClient }, { SoftprobeVercelAiSdkIntegration }] = await Promise.all([
+      import('ai'),
+      import('@softprobe/tracing'),
+      import('@softprobe/vercel-ai-sdk'),
+    ]);
+    softprobeClient = SoftprobeClient.fromEnv({ serviceName: 'demo-ota-travel-agent' });
+    registerTelemetry(new SoftprobeVercelAiSdkIntegration({ tracer: softprobeClient.tracer }));
+  }
   if (stopping) return;
   server = createGateway({ root, engine, store, internalToken, travel, maxConversations: null, basePath: '/agent' });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });

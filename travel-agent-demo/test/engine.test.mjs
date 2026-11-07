@@ -51,6 +51,32 @@ test('Vercel AI model requests include current date and infer yearless month/day
   await engine.stop();
 });
 
+test('Vercel AI telemetry uses the existing application conversation ID', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'travel-vercel-session-telemetry-test-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  let modelCall;
+  const engine = new VercelAIEngine({
+    root,
+    internalToken: 'test-capability',
+    env: { GOOGLE_GENERATIVE_AI_API_KEY: 'fixture-google-key' },
+    generateTextFn: async options => {
+      modelCall = options;
+      return { text: 'Searching.', steps: [], response: { messages: [{ role: 'assistant', content: 'Searching.' }] } };
+    },
+  });
+  const session = await engine.request('/session', { method: 'POST', body: { provider: 'google', model: 'gemini-3.8-flash' } });
+
+  await engine.request(`/session/${session.id}/message`, {
+    method: 'POST',
+    body: { parts: [{ type: 'text', text: 'Find one-way economy flights from LHR to CDG on 2026-12-01.' }] },
+  });
+
+  assert.match(session.id, /^ses_[A-Za-z0-9_-]+$/);
+  assert.deepEqual(modelCall.runtimeContext, { sessionId: session.id });
+  assert.deepEqual(modelCall.telemetry.includeRuntimeContext, { sessionId: true });
+  await engine.stop();
+});
+
 test('a selected offer removes search from the model toolset until preparation succeeds', async t => {
   const root = mkdtempSync(join(tmpdir(), 'travel-selected-offer-test-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
