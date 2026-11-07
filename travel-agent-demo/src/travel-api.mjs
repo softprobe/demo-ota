@@ -101,8 +101,9 @@ export class TravelAPI {
       throw new Error('Only a verified, unpaid reservation can be paid.');
     }
     let paymentError;
+    let paymentResponse;
     try {
-      await this.post('/api/flights/payandissue', {
+      paymentResponse = await this.post('/api/flights/payandissue', {
         bookingId: booking.bookingId,
         paymentMethod: 'CREDIT_CARD',
         amount: Number(offer.total).toFixed(2),
@@ -121,11 +122,29 @@ export class TravelAPI {
       const paidBooking = await this.queryAndVerify(request, booking.confirmationNumber, booking.bookingId, { paymentStatus: 'PAID' });
       const paymentId = paidBooking.paymentInfo?.paymentId;
       if (!paymentId) throw new Error('Paid order read-back did not return a payment reference.');
+      const apiStatus = ['SUCCESS', 'FAILED', 'PENDING', 'CANCELLED'].includes(paymentResponse?.status)
+        ? paymentResponse.status : 'UNKNOWN';
+      const responseBookingId = typeof paymentResponse?.bookingId === 'string' && paymentResponse.bookingId.trim()
+        ? paymentResponse.bookingId : null;
+      const parsedAmount = Number(paymentResponse?.amount);
+      const responseAmount = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : null;
+      const responseCurrency = typeof paymentResponse?.currency === 'string' && /^[A-Z]{3}$/.test(paymentResponse.currency)
+        ? paymentResponse.currency : null;
+      const responsePaymentId = typeof paymentResponse?.paymentId === 'string' && paymentResponse.paymentId.trim()
+        ? paymentResponse.paymentId : null;
+      const apiResponseVerified = apiStatus === 'SUCCESS'
+        && (!responseBookingId || responseBookingId === booking.bookingId)
+        && (responseAmount === null || Math.round(responseAmount * 100) === Math.round(offer.total * 100))
+        && (!responseCurrency || responseCurrency === offer.currency)
+        && (!responsePaymentId || responsePaymentId === paymentId);
+      const apiMessage = typeof paymentResponse?.message === 'string'
+        ? paymentResponse.message.replace(/[\p{Cc}\p{Cf}<>]/gu, ' ').trim().slice(0, 512) || null : null;
       return {
         payment: {
-          paymentId, transactionId: null,
+          paymentId, transactionId: typeof paymentResponse?.transactionId === 'string' ? paymentResponse.transactionId : null,
           status: 'SUCCESS', bookingId: paidBooking.bookingId, amount: paidBooking.amount, currency: paidBooking.currency,
           paymentMethod: paidBooking.paymentInfo.paymentMethod ?? 'CREDIT_CARD', paymentDate: paidBooking.paymentInfo.paymentDate,
+          apiStatus, apiMessage, apiResponseVerified,
         },
         booking: paidBooking,
       };

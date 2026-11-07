@@ -91,6 +91,9 @@
   }
 
   function bookingAnnouncement(booking) {
+    if (booking.paymentStatus === 'PAID' && booking.payment?.apiStatus === 'SUCCESS') {
+      return 'The OTA pay-and-issue API returned SUCCESS, and the booking order verifies payment.';
+    }
     if (booking.paymentStatus === 'PAID') {
       return booking.status === 'TICKETED'
         ? 'Payment is verified as paid, and the order confirms ticket issuance.'
@@ -368,6 +371,14 @@
     const allMessages = state.session?.messages || [];
     let changed = renderToolActivity(allMessages);
     const messages = allMessages.filter((message) => typeof message.text === 'string' && message.text.trim());
+    const booking = state.session?.booking;
+    if (booking?.verified === true && booking.paymentStatus === 'PAID') {
+      const price = money(booking.amount, booking.currency);
+      const resultText = booking.payment?.apiStatus === 'SUCCESS'
+        ? `Payment confirmed: the OTA pay-and-issue API returned SUCCESS. The order lookup verifies PAID (${price}); its booking remains ${text(booking.status, 'status not returned')} and it returned no ticket number or ticketed status. Do not pay again.`
+        : `Payment confirmed: the order lookup verifies PAID (${price}). The booking remains ${text(booking.status, 'status not returned')} and the order returned no ticket number or ticketed status. Do not pay again.`;
+      messages.push({ id: `payment-result-${text(booking.bookingId)}`, role: 'assistant', text: resultText });
+    }
     const keep = new Set();
     for (const [index, message] of messages.entries()) {
       const key = message.id;
@@ -699,7 +710,11 @@
         fillDetails(ui.bookingDetails, [
           ['Booking ID', booking.bookingId], ['Confirmation', booking.confirmationNumber],
           ['Status', booking.status], ['Payment status', booking.paymentStatus],
-          ...(booking.payment ? [['Payment ID', booking.payment.paymentId], ['Transaction', booking.payment.transactionId]] : []),
+          ...(booking.payment ? [
+            ['Payment ID', booking.payment.paymentId], ['Transaction', booking.payment.transactionId],
+            ...(booking.payment.apiStatus ? [['Pay-and-issue response', booking.payment.apiStatus]] : []),
+            ...(booking.payment.apiMessage ? [['Payment API message', booking.payment.apiMessage]] : []),
+          ] : []),
           ['Traveler', fullName(booking.passenger)], ['Flight', booking.flightInfo?.flightNumber],
           ['From', booking.flightInfo?.departureAirport], ['To', booking.flightInfo?.arrivalAirport],
           ['Departs', booking.flightInfo?.departureTime], ['Arrives', booking.flightInfo?.arrivalTime],
@@ -719,16 +734,20 @@
     setText(ui.paymentActionStatus, paymentStatusText);
     const paid = booking?.paymentStatus === 'PAID' && booking?.verified;
     const ticketed = paid && booking.status === 'TICKETED';
-    setText(ui.reservationDisclaimer, paid ? (ticketed ? 'Paid · Ticket issued' : 'Paid · Ticket status not returned')
+    const paymentApiConfirmed = paid && booking.payment?.apiStatus === 'SUCCESS';
+    setText(ui.reservationDisclaimer, paid ? (ticketed ? 'Paid · Ticket issued' : paymentApiConfirmed ? 'Paid · OTA API returned SUCCESS' : 'Paid · Order verified')
       : paymentAttempt === 'uncertain' ? 'Payment status uncertain' : 'Unpaid · Not ticketed');
     setText(ui.paymentNote, paid
-      ? ticketed ? 'Payment and ticket status were independently verified against the order.' : 'Payment was independently verified. The order did not confirm ticket issuance.'
+      ? ticketed ? 'Payment and ticket status were independently verified against the order.'
+        : paymentApiConfirmed ? `The OTA pay-and-issue API returned SUCCESS${booking.payment.apiMessage ? `: ${booking.payment.apiMessage}` : ''}. The order lookup independently confirms PAID but has no separate ticket number or ticket status. Do not pay again.`
+          : 'The order lookup independently confirms PAID. This saved record has no verified pay-and-issue response or ticket status; do not pay again.'
       : paymentAttempt === 'uncertain' ? 'The payment request may have reached the service; the gateway blocks duplicate payment attempts.'
         : 'The reservation is verified and awaiting payment.');
     if (paid) {
       setText(ui.bookingNote, ticketed
         ? 'The order service verified payment and ticket status.'
-        : 'The order service verified payment; it returned the booking as confirmed, without a ticketed status.');
+        : paymentApiConfirmed ? 'The OTA pay-and-issue API returned SUCCESS, and the separate order lookup verified payment. The order lookup does not expose a ticket number or ticketed status.'
+          : 'The order service verified payment but this saved transaction does not include the original pay-and-issue response.');
     }
     const skipped = pending?.status === 'completed' && Boolean(booking) &&
       (booking.demoFault?.kind === 'skip_manager_approval' || pending.demoFault?.kind === 'skip_manager_approval');
@@ -1026,7 +1045,7 @@
   ui.payIssue.addEventListener('click', () => {
     const pending = state.session?.pending;
     if (!canPay() || !pending?.id) return;
-    void sessionAction('pay', 'pay', { requestId: pending.id }, 'Payment and ticket status were verified against the order.');
+    void sessionAction('pay', 'pay', { requestId: pending.id }, 'The payment API and order lookup verified the payment.');
   });
   ui.cancel.addEventListener('click', () => {
     if (!canDiscard()) return;

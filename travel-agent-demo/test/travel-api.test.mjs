@@ -44,9 +44,13 @@ test('payment uses the OTA test card and verifies the paid order without searchi
     ...request,
     result: { bookingId: 'fixture-booking', confirmationNumber: 'ABC123', paymentStatus: 'PENDING', verified: true, amount: 123, currency: 'USD' },
   };
-  const payment = { status: 'SUCCESS' };
+  const payment = {
+    paymentId: 'payment-1', status: 'SUCCESS', bookingId: 'fixture-booking', amount: 123, currency: 'USD',
+    paymentMethod: 'CREDIT_CARD', paymentDate: '2026-11-06T12:00:00', transactionId: 'transaction-1',
+    message: 'Payment and ticket issue succeeded',
+  };
   const paidOrder = {
-    ...booking, status: 'TICKETED', paymentInfo: {
+    ...booking, status: 'CONFIRMED', paymentInfo: {
       paymentId: 'payment-1', amount: 123, currency: 'USD', paymentMethod: 'CREDIT_CARD',
       paymentStatus: 'PAID', paymentDate: '2026-11-06T12:00:00',
     },
@@ -58,11 +62,15 @@ test('payment uses the OTA test card and verifies the paid order without searchi
   } });
   const result = await api.payAndVerify(bookingRequest);
   assert.equal(result.payment.status, 'SUCCESS');
-  assert.equal(result.booking.status, 'TICKETED');
+  assert.equal(result.payment.apiStatus, 'SUCCESS');
+  assert.equal(result.payment.apiResponseVerified, true);
+  assert.equal(result.payment.apiMessage, 'Payment and ticket issue succeeded');
+  assert.equal(result.payment.transactionId, 'transaction-1');
+  assert.equal(result.booking.status, 'CONFIRMED');
   assert.equal(result.booking.paymentStatus, 'PAID');
   assert.equal(result.booking.verified, true);
   assert.equal(result.payment.paymentId, 'payment-1', 'the authoritative payment ID comes from the paid order read-back');
-  assert.equal(result.payment.transactionId, null, 'a missing transaction ID does not prevent order verification');
+  assert.equal(result.payment.transactionId, 'transaction-1', 'the payment API transaction reference is retained when present');
   assert.deepEqual(calls.map(call => call.path), ['/api/flights/payandissue', '/api/flights/orders/query']);
   assert.deepEqual(calls[0].body, {
     bookingId: 'fixture-booking', paymentMethod: 'CREDIT_CARD', amount: '123.00', currency: 'USD',
@@ -70,6 +78,53 @@ test('payment uses the OTA test card and verifies the paid order without searchi
   });
   assert.deepEqual(calls[1].body, { confirmationNumber: 'ABC123', passengerLastName: 'Demo' });
   assert.equal(JSON.stringify(calls).includes('billingAddress'), false);
+});
+
+test('a paid order is reconciled without retry when the payment response disagrees', async () => {
+  const calls = [];
+  const bookingRequest = {
+    ...request,
+    result: { bookingId: 'fixture-booking', confirmationNumber: 'ABC123', paymentStatus: 'PENDING', verified: true, amount: 123, currency: 'USD' },
+  };
+  const paidOrder = {
+    ...booking, status: 'CONFIRMED', paymentInfo: {
+      paymentId: 'payment-1', amount: 123, currency: 'USD', paymentMethod: 'CREDIT_CARD', paymentStatus: 'PAID',
+    },
+  };
+  const api = new TravelAPI({ fetchFn: async (url, options) => {
+    calls.push(new URL(url).pathname);
+    return json(new URL(url).pathname === '/api/flights/payandissue' ? {
+      status: 'FAILED', bookingId: 'different-booking', amount: 999, currency: 'USD',
+    } : paidOrder);
+  } });
+  const result = await api.payAndVerify(bookingRequest);
+  assert.equal(result.booking.paymentStatus, 'PAID', 'the exact order read-back is authoritative');
+  assert.equal(result.payment.apiStatus, 'FAILED');
+  assert.equal(result.payment.apiResponseVerified, false);
+  assert.deepEqual(calls, ['/api/flights/payandissue', '/api/flights/orders/query']);
+});
+
+test('a SUCCESS response with omitted optional fields is tied to its exact paid order read-back', async () => {
+  const calls = [];
+  const bookingRequest = {
+    ...request,
+    result: { bookingId: 'fixture-booking', confirmationNumber: 'ABC123', paymentStatus: 'PENDING', verified: true, amount: 123, currency: 'USD' },
+  };
+  const paidOrder = {
+    ...booking, status: 'CONFIRMED', paymentInfo: {
+      paymentId: 'payment-1', amount: 123, currency: 'USD', paymentMethod: 'CREDIT_CARD', paymentStatus: 'PAID',
+    },
+  };
+  const api = new TravelAPI({ fetchFn: async url => {
+    const path = new URL(url).pathname;
+    calls.push(path);
+    return json(path === '/api/flights/payandissue' ? { status: 'SUCCESS', message: 'Payment processed successfully' } : paidOrder);
+  } });
+  const result = await api.payAndVerify(bookingRequest);
+  assert.equal(result.payment.apiResponseVerified, true);
+  assert.equal(result.payment.apiMessage, 'Payment processed successfully');
+  assert.equal(result.booking.paymentStatus, 'PAID');
+  assert.deepEqual(calls, ['/api/flights/payandissue', '/api/flights/orders/query']);
 });
 
 test('CONFIRMED with wrong flight or zero amount is unverified; never retries the booking', async () => {

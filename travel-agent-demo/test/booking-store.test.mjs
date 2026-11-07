@@ -39,6 +39,7 @@ function paidResult(request) {
       paymentId: 'payment-1', transactionId: 'transaction-1', status: 'SUCCESS',
       bookingId: request.result.bookingId, amount: offer.total, currency: offer.currency,
       paymentMethod: 'CREDIT_CARD', paymentDate: '2026-11-06T12:00:00',
+      apiStatus: 'SUCCESS', apiMessage: 'Payment and ticket issue succeeded', apiResponseVerified: true,
     },
     booking,
   };

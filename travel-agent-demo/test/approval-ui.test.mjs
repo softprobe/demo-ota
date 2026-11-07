@@ -57,7 +57,7 @@ async function mount(t, { session = sessionFixture(), approve, cancel } = {}) {
     else if (path === `/api/sessions/${session.id}` && method === 'GET') data = structuredClone(session);
     else if (path === `/api/sessions/${session.id}/messages` && method === 'POST') data = { accepted: true };
     else if (path === `/api/sessions/${session.id}/pay` && method === 'POST') {
-      session.booking = { ...session.booking, status: 'CONFIRMED', paymentStatus: 'PAID', paymentAttempt: { status: 'completed' }, payment: { paymentId: 'payment-1', transactionId: 'transaction-1' } };
+      session.booking = { ...session.booking, status: 'CONFIRMED', paymentStatus: 'PAID', paymentAttempt: { status: 'completed' }, payment: { paymentId: 'payment-1', transactionId: 'transaction-1', status: 'SUCCESS', apiStatus: 'UNKNOWN', apiMessage: null, apiResponseVerified: false } };
       data = { paid: true, booking: structuredClone(session.booking) };
     }
     else if (path === `/api/sessions/${session.id}/approve` && method === 'POST' && approve) data = approve(body, session);
@@ -156,13 +156,30 @@ test('pay and issue uses a separate confirmation route without sending card data
   assert.match(byId('payment-action-status').textContent, /test card/i);
   assert.equal(byId('cardNumber'), null);
   pay.click();
-  await until(() => byId('reservation-disclaimer').textContent === 'Paid · Ticket status not returned', 'verified payment status');
+  await until(() => byId('reservation-disclaimer').textContent === 'Paid · Order verified', 'verified payment status');
   assert.match(byId('announcer').textContent, /verified as paid/);
-  assert.match(byId('payment-note').textContent, /did not confirm ticket issuance/);
+  assert.match(byId('payment-note').textContent, /no verified pay-and-issue response/);
   const submission = calls.find(call => call.path === `/api/sessions/${session.id}/pay` && call.method === 'POST');
   assert.deepEqual(submission.body, { requestId: 'booking-request' });
   assert.equal(calls.some(call => call.path.endsWith('/messages') && call.method === 'POST'), false);
   assert.equal(byId('pay-issue-button').hidden, true);
+});
+
+test('a saved SUCCESS response and paid order leave a clear completed payment state', async t => {
+  const session = sessionFixture();
+  session.pending = { id: 'booking-request', status: 'completed' };
+  session.booking = {
+    bookingId: 'booking-1', confirmationNumber: 'ABC123', status: 'CONFIRMED', paymentStatus: 'PAID',
+    verified: true, amount: 750, currency: 'USD', flightInfo: { flightNumber: 'DEMO101' },
+    passenger: { firstName: 'Alex', lastName: 'Demo' }, paymentAttempt: { status: 'completed' },
+    payment: { paymentId: 'payment-1', transactionId: 'transaction-1', status: 'SUCCESS', apiStatus: 'SUCCESS', apiMessage: 'Payment and ticket issue succeeded', apiResponseVerified: true },
+  };
+  const { byId } = await mount(t, { session });
+  assert.equal(byId('reservation-disclaimer').textContent, 'Paid · OTA API returned SUCCESS');
+  assert.ok(byId('booking-details').textContent.includes('Pay-and-issue responseSUCCESS'));
+  assert.match(byId('payment-note').textContent, /has no separate ticket number or ticket status/);
+  assert.match(byId('messages').textContent, /Payment confirmed: the OTA pay-and-issue API returned SUCCESS/);
+  assert.match(byId('messages').textContent, /order lookup verifies PAID \(USD 750\)/);
 });
 
 test('over-policy requests do not show a disabled continue button while manager approval is pending', async t => {

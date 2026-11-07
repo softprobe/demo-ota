@@ -149,11 +149,18 @@ function matchesBooking(result, request, paymentStatus = 'PENDING') {
 function validPaymentResult(value, request) {
   if (!exactKeys(value, ['payment', 'booking']) || !isRecord(value.payment) || !isRecord(value.booking)) return false;
   const payment = value.payment;
-  return exactKeys(payment, ['paymentId', 'transactionId', 'status', 'bookingId', 'amount', 'currency', 'paymentMethod', 'paymentDate'])
+  const basePaymentKeys = ['paymentId', 'transactionId', 'status', 'bookingId', 'amount', 'currency', 'paymentMethod', 'paymentDate'];
+  const apiPaymentKeys = [...basePaymentKeys, 'apiStatus', 'apiMessage', 'apiResponseVerified'];
+  const hasApiResponse = exactKeys(payment, apiPaymentKeys);
+  return (hasApiResponse || exactKeys(payment, basePaymentKeys))
     && validText(payment.paymentId) && (payment.transactionId === null || validText(payment.transactionId)) && payment.status === 'SUCCESS'
     && payment.bookingId === request.result?.bookingId && payment.amount === request.offer.total
     && payment.currency === request.offer.currency && payment.paymentMethod === 'CREDIT_CARD'
     && (payment.paymentDate === null || validTimestamp(payment.paymentDate))
+    && (!hasApiResponse || (['SUCCESS', 'FAILED', 'PENDING', 'CANCELLED', 'UNKNOWN'].includes(payment.apiStatus)
+      && (payment.apiMessage === null || validText(payment.apiMessage))
+      && typeof payment.apiResponseVerified === 'boolean'
+      && (!payment.apiResponseVerified || payment.apiStatus === 'SUCCESS')))
     && matchesBooking(value.booking, request, 'PAID')
     && value.booking.bookingId === payment.bookingId && value.booking.amount === payment.amount
     && value.booking.currency === payment.currency && value.booking.paymentInfo?.paymentId === payment.paymentId
