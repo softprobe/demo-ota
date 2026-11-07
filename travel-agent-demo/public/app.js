@@ -412,7 +412,10 @@
       setText(view.author, internalDemoFault ? 'Approval simulation' : message.role === 'user' ? 'You' : 'Assistant');
       const displayText = obsoleteDemoFault ? 'This fare is within the current approval limit; no simulation is needed.' : internalDemoFault ? 'Approval-failure simulation enabled.' : internalConfirmation ? 'Booking confirmation sent.' : internalOfferRequest ? 'Prepare this flight for review.'
         : staleApprovalInstruction ? awaitingManagerApproval() ? 'Separate manager approval is pending. No reservation has been placed.' : 'Review the fare in the trip panel and confirm it to continue.'
-          : stalePolicyBlock ? 'This fare is within the current $1,000 USD limit. Manager approval is not required; confirm it in the trip panel to continue.' : message.text;
+          : stalePolicyBlock ? 'This fare is within the current $1,000 USD limit. Manager approval is not required; confirm it in the trip panel to continue.'
+            : booking?.verified === true && booking.paymentStatus === 'PAID'
+            ? message.text.replace(/\*{0,2}Payment Status:\*{0,2}\s*Pending(?:\s*\([^\r\n)]*\))?/i, 'Payment status at reservation confirmation: Pending; it has since been verified as PAID')
+              : message.text;
       if (view.renderedText !== displayText) {
         renderMarkdown(view.body, displayText);
         view.renderedText = displayText;

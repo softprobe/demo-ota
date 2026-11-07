@@ -167,6 +167,10 @@ test('pay and issue uses a separate confirmation route without sending card data
 
 test('a saved SUCCESS response and paid order leave a clear completed payment state', async t => {
   const session = sessionFixture();
+  session.messages = [
+    { id: 'booking-confirmation-old', role: 'assistant', text: '- **Payment Status:** Pending (to be completed in the trip panel)' },
+    { id: 'booking-confirmation-current', role: 'assistant', text: '- **Payment Status:** Pending (payment can be completed via the trip panel)' },
+  ];
   session.pending = { id: 'booking-request', status: 'completed' };
   session.booking = {
     bookingId: 'booking-1', confirmationNumber: 'ABC123', status: 'CONFIRMED', paymentStatus: 'PAID',
@@ -180,6 +184,8 @@ test('a saved SUCCESS response and paid order leave a clear completed payment st
   assert.match(byId('payment-note').textContent, /has no separate ticket number or ticket status/);
   assert.match(byId('messages').textContent, /Payment confirmed: the OTA pay-and-issue API returned SUCCESS/);
   assert.match(byId('messages').textContent, /order lookup verifies PAID \(USD 750\)/);
+  assert.equal((byId('messages').textContent.match(/Payment status at reservation confirmation: Pending; it has since been verified as PAID/g) || []).length, 2);
+  assert.doesNotMatch(byId('messages').textContent, /Payment Status:\*\* Pending/);
 });
 
 test('over-policy requests do not show a disabled continue button while manager approval is pending', async t => {
