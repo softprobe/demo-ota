@@ -34,20 +34,7 @@ if [[ ! -f "${agent_dir}/src/start.mjs" ]]; then
   exit 1
 fi
 
-java_agent_args=()
-if [[ -f /otel.jar ]]; then
-  java_agent_args+=(
-    -javaagent:/otel.jar
-    -Dotel.traces.exporter=none
-    -Dotel.metrics.exporter=none
-    -Dotel.logs.exporter=none
-    -Dotel.resource.attributes=service.name=sp-storage
-    -Dotel.instrumentation.http.server.capture-request-headers=tracestate
-    -Dotel.instrumentation.http.server.capture-response-headers=tracestate
-  )
-fi
-
-java ${JAVA_OPTS:-} "${java_agent_args[@]}" -jar "${app_jar}" --server.port="${SERVER_PORT}" &
+java -jar "${app_jar}" --server.port="${SERVER_PORT}" &
 ota_pid=$!
 
 (

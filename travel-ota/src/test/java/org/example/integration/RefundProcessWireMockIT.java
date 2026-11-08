@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Rigid refund replay modeled on Softprobe session
+ * Refund flow against a fixed NDC response fixture
  * {@code 0914c87923125aa54c8be5e5c2eb06dd} ({@code /api/orders/refund} → airline refund).
  * Local OTA maps the same contract onto {@code POST /api/flights/refund/process} → NDC {@code /ordercancel}.
  */
@@ -51,8 +51,8 @@ class RefundProcessWireMockIT {
     }
 
     @Test
-    @DisplayName("Softprobe refund session: PERSONAL_REASON for BK1784828900553 / L5AB90 / Visitor")
-    void refundMatchesSoftprobeRecordedSession() throws Exception {
+    @DisplayName("Refund a reservation for a personal reason")
+    void refundReservation() throws Exception {
         stubNdcPostExactJson(
                 ndc,
                 "/ordercancel",

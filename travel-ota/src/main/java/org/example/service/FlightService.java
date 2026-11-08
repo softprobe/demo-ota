@@ -1,27 +1,18 @@
 package org.example.service;
 
 import org.example.model.*;
-import org.example.config.RegionalTaxService;
 import org.example.ndc.NdcAirlineClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.Map;
-
 @Service
 public class FlightService {
     private static final Logger logger = LoggerFactory.getLogger(FlightService.class);
 
-    private final Map<String, BookingResponse> bookings = new HashMap<>();
-
     @Autowired
     private NdcAirlineClient ndcAirlineClient;
-
-    @Autowired
-    private RegionalTaxService regionalTaxService;
 
     public FlightSearchResponse searchFlights(FlightSearchRequest request) {
         try {
@@ -31,9 +22,7 @@ public class FlightService {
                     request.getToCity(),
                     request.getDepartureDate());
             logger.info("Calling airline NDC API for flight search");
-            FlightSearchResponse flightResponse = ndcAirlineClient.searchFlights(request);
-            regionalTaxService.applyToSearchResponse(flightResponse);
-            return flightResponse;
+            return ndcAirlineClient.searchFlights(request);
         } catch (Exception e) {
             logger.error("Failed to get response from airline NDC API", e);
             throw new RuntimeException("Failed to get response from airline API: " + e.getMessage());
@@ -48,11 +37,7 @@ public class FlightService {
                     request.getFareId(),
                     request.getPassengers().size());
             logger.info("Calling airline NDC API for booking");
-            BookingResponse bookingResponse = ndcAirlineClient.bookFlight(request);
-            if (bookingResponse.getConfirmationNumber() != null) {
-                bookings.put(bookingResponse.getConfirmationNumber(), bookingResponse);
-            }
-            return bookingResponse;
+            return ndcAirlineClient.bookFlight(request);
         } catch (Exception e) {
             logger.error("Failed to book flight through airline NDC API", e);
             throw new RuntimeException("Failed to book flight through airline API: " + e.getMessage());

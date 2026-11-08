@@ -45,34 +45,11 @@ A demo flight booking system built with JDK 21 and Spring Boot 3.x. It includes 
    - Pay by PNR
    - Returns ticket number on success
 
-## Spring config replay demo (internal only)
+## Instrumentation boundary
 
-`RegionTenantCodeConfig` uses `@Value` on setters → static fields → inner enum constants. Search applies **regional tax** to airline fares in `FlightService` (MEA 8%, EU 20% via `tenant.sales-region`); the public search API shape is unchanged.
-
-At replay, inject a different `tenant.sales-region` (e.g. `EU` vs recorded `MEA`) so tax — and fare prices — differ; replay diff fails if static config is not refreshed. Test: `mvn test -Dtest=RegionTenantCodeConfigTest`.
-
-Workspace E2E: [`arex/e2e/instrumentation-matrix.md`](https://github.com/softprobe/arex/blob/main/e2e/instrumentation-matrix.md).
-
-## Instrumentation E2E map
-
-| Agent module | OTA code path |
-|--------------|---------------|
-| `sp-httpservlet` | `FlightController` — all `/api/flights/*` endpoints |
-| `sp-httpclient-resttemplate-v6` | search → `NdcHttpRouter` / `airshopping` |
-| `sp-httpclient-apache-v4` | book → `/offerprice` |
-| `sp-httpclient-okhttp-v3` | book → `/ordercreate`, baggage |
-| `sp-httpclient-feign` | pay → `/orderchange` |
-| `sp-httpclient-webclient-v6` | order query → `/orderretrieve` |
-| `sp-httpclient-ning` | refund → `/ordercancel` |
-| `sp-httpclient-jdk` | change search → `/airshopping` |
-| `sp-httpclient-apache-v3` | change commit → `/orderchange` |
-| `sp-spring-config` | `RegionTenantCodeConfig` + `RegionalTaxService` (search tax) |
-| `sp-dynamic` | `AuthenticateService.authenticate` on every `/search` |
-| `sp-loader` | fat JAR + embedded Tomcat (multi-classloader) |
-
-`/search` intentionally calls `AuthenticateService` so dynamic-class recording can be verified in `make e2e`.
-
-Replay knob for spring-config: set `tenant.sales-region` (`MEA` = 8% tax, `EU` = 20%) via `application.yml` or `TENANT_SALES_REGION` env at replay time.
+The app image contains no browser SDK, Java agent, OBI, recording or capture
+code, Softprobe credentials, or instrumentation configuration. Test and
+deployment systems supply instrumentation outside the app image.
 
 ## Tech stack
 
@@ -131,9 +108,9 @@ travel-ota
    mvn clean install -DskipTests
    ```
 
-2. Start the OTA service
+2. Start the OTA service with Spring Boot
    ```bash
-   ./run.sh
+   java -jar target/travel-ota-1.0-SNAPSHOT.jar
    ```
 
 3. Open http://localhost:8080

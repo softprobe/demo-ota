@@ -14,7 +14,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 
 /**
- * Helpers for Softprobe-style rigid NDC stubs on a per-test-class {@link WireMockExtension}.
+ * Helpers for NDC response fixtures on a per-test-class {@link WireMockExtension}.
  */
 public final class WireMockNdcFixtures {
 

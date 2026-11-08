@@ -233,15 +233,13 @@ async function handleBooking(event) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-sp-session-id': getSessionId()
             },
             body: JSON.stringify(bookingData)
         });
         
         if (response.ok) {
             const result = await response.json();
-            // Store booking result to sessionStorage, then navigate to payment page
-            console.log('Booking result:', result);
+            // Store the booking for the payment page.
             sessionStorage.setItem('bookingResult', JSON.stringify(result));
             window.location.href = '/payment.html';
         } else {

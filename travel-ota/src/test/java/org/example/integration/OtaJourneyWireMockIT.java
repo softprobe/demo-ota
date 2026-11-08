@@ -27,8 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * End-to-end OTA journey against a WireMock NDC upstream, using the Softprobe refund session IDs
- * ({@code BK1784828900553} / {@code L5AB90} / {@code Visitor}) as the rigid booking identity.
+ * End-to-end OTA journey against a WireMock NDC upstream using synthetic booking details.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -60,8 +59,8 @@ class OtaJourneyWireMockIT {
     }
 
     @Test
-    @DisplayName("Search applies MEA regional tax on WireMock NDC fares (RestTemplate)")
-    void searchAppliesMeaRegionalTax() throws Exception {
+    @DisplayName("Search returns fares from the NDC response")
+    void searchReturnsNdcFares() throws Exception {
         stubNdcPost(ndc, "/airshopping", "wiremock/ndc/airshopping-sfo-lax.json");
 
         mockMvc.perform(post("/api/flights/search")
@@ -79,14 +78,14 @@ class OtaJourneyWireMockIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.flights", hasSize(1)))
                 .andExpect(jsonPath("$.flights[0].flightId", is("FL-WIREMOCK-001")))
-                .andExpect(jsonPath("$.flights[0].fareOptions[0].price", is(108.0)))
-                .andExpect(jsonPath("$.flights[0].fareOptions[1].price", is(889.92)));
+                .andExpect(jsonPath("$.flights[0].fareOptions[0].price", is(100)))
+                .andExpect(jsonPath("$.flights[0].fareOptions[1].price", is(824)));
 
         ndc.verify(1, postRequestedFor(urlPathEqualTo("/ndc/v21.3/airshopping")));
     }
 
     @Test
-    @DisplayName("Book creates Softprobe-session booking via offerprice + ordercreate")
+    @DisplayName("Book creates a reservation through offerprice and ordercreate")
     void bookCreatesSessionBooking() throws Exception {
         stubNdcPost(ndc, "/offerprice", "wiremock/ndc/offerprice-ok.json");
         stubNdcPost(ndc, "/ordercreate", "wiremock/ndc/ordercreate-ok.json");
@@ -122,7 +121,7 @@ class OtaJourneyWireMockIT {
     }
 
     @Test
-    @DisplayName("Pay-and-issue tickets the Softprobe session booking (Feign)")
+    @DisplayName("Pay-and-issue tickets a reservation")
     void payAndIssueTicketsBooking() throws Exception {
         stubNdcPostMatchingBody(
                 ndc, "/orderchange", "_ndcChangeType", "wiremock/ndc/orderchange-payment-ok.json");
@@ -154,7 +153,7 @@ class OtaJourneyWireMockIT {
     }
 
     @Test
-    @DisplayName("Order query retrieves Softprobe session booking (WebClient)")
+    @DisplayName("Order query retrieves a reservation")
     void queryOrderRetrievesSessionBooking() throws Exception {
         stubNdcPost(ndc, "/orderretrieve", "wiremock/ndc/orderretrieve-ok.json");
 
@@ -176,7 +175,7 @@ class OtaJourneyWireMockIT {
     }
 
     @Test
-    @DisplayName("Change flight re-shops and changes order (JDK URLConnection + Apache3)")
+    @DisplayName("Change flight re-shops and changes the reservation")
     void changeFlightUpdatesBooking() throws Exception {
         stubNdcPost(ndc, "/airshopping", "wiremock/ndc/airshopping-sfo-lax.json");
         stubNdcPost(ndc, "/orderchange", "wiremock/ndc/orderchange-flight-change-ok.json");
@@ -207,7 +206,7 @@ class OtaJourneyWireMockIT {
     }
 
     @Test
-    @DisplayName("Baggage purchase lists services then order-changes (OkHttp + Apache4 async)")
+    @DisplayName("Baggage purchase lists services then updates the reservation")
     void purchaseBaggageAddsCheckedBag() throws Exception {
         stubNdcPost(ndc, "/servicelist", "wiremock/ndc/servicelist-ok.json");
         stubNdcPostMatchingBody(
@@ -239,8 +238,8 @@ class OtaJourneyWireMockIT {
     }
 
     @Test
-    @DisplayName("Full Softprobe-style journey: search → book → pay → query → baggage → refund")
-    void fullJourneyThroughSoftprobeSessionIds() throws Exception {
+    @DisplayName("Full journey: search → book → pay → query → baggage → refund")
+    void fullJourney() throws Exception {
         stubNdcPost(ndc, "/airshopping", "wiremock/ndc/airshopping-sfo-lax.json");
         stubNdcPost(ndc, "/offerprice", "wiremock/ndc/offerprice-ok.json");
         stubNdcPost(ndc, "/ordercreate", "wiremock/ndc/ordercreate-ok.json");

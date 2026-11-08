@@ -1,87 +1,96 @@
 package org.example.ndc;
 
-import org.example.model.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.example.ndc.http.NdcCallSite;
-import org.example.ndc.http.NdcHttpRouter;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.example.config.AirlineApiConfig;
+import org.example.model.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 @Service
 public class NdcAirlineClient {
 
-    @Autowired
-    private NdcHttpRouter ndcHttpRouter;
+    private static final Logger logger = LoggerFactory.getLogger(NdcAirlineClient.class);
+    private static final String DEFAULT_BASE_URL = "https://spair.softprobe.ai/ndc/v21.3";
 
-    @Autowired
-    private NdcMapper ndcMapper;
+    private final RestTemplate restTemplate;
+    private final AirlineApiConfig airlineApiConfig;
+    private final NdcMapper ndcMapper;
+
+    public NdcAirlineClient(
+            RestTemplate restTemplate,
+            AirlineApiConfig airlineApiConfig,
+            NdcMapper ndcMapper) {
+        this.restTemplate = restTemplate;
+        this.airlineApiConfig = airlineApiConfig;
+        this.ndcMapper = ndcMapper;
+    }
 
     public FlightSearchResponse searchFlights(FlightSearchRequest request) {
-        ObjectNode body = ndcMapper.toAirShoppingRq(request);
-        JsonNode rs = ndcHttpRouter.post(NdcCallSite.SEARCH_AIRSHOPPING, "/airshopping", body);
-        return ndcMapper.fromAirShoppingRs(rs);
+        JsonNode response = post("/airshopping", ndcMapper.toAirShoppingRq(request));
+        return ndcMapper.fromAirShoppingRs(response);
     }
 
     public BookingResponse bookFlight(BookingRequest request) {
-        ndcHttpRouter.post(
-                NdcCallSite.BOOK_OFFER_PRICE,
-                "/offerprice",
-                ndcMapper.toOfferPriceRq(request.getFlightId(), request.getFareId()));
-        JsonNode rs = ndcHttpRouter.post(
-                NdcCallSite.BOOK_ORDER_CREATE,
-                "/ordercreate",
-                ndcMapper.toOrderCreateRq(request));
-        return ndcMapper.fromOrderViewRs(rs);
+        post("/offerprice", ndcMapper.toOfferPriceRq(request.getFlightId(), request.getFareId()));
+        JsonNode response = post("/ordercreate", ndcMapper.toOrderCreateRq(request));
+        return ndcMapper.fromOrderViewRs(response);
     }
 
     public PaymentResponse payAndIssue(PaymentRequest request) {
-        JsonNode rs = ndcHttpRouter.post(
-                NdcCallSite.PAY_ORDER_CHANGE,
-                "/orderchange",
-                ndcMapper.toPaymentOrderChangeRq(request));
-        return ndcMapper.fromPaymentRs(rs);
+        JsonNode response = post("/orderchange", ndcMapper.toPaymentOrderChangeRq(request));
+        return ndcMapper.fromPaymentRs(response);
     }
 
     public BookingResponse queryOrder(OrderQueryRequest request) {
-        JsonNode rs = ndcHttpRouter.post(
-                NdcCallSite.QUERY_ORDER_RETRIEVE,
-                "/orderretrieve",
-                ndcMapper.toOrderRetrieveRq(request));
-        return ndcMapper.fromOrderViewRs(rs);
+        JsonNode response = post("/orderretrieve", ndcMapper.toOrderRetrieveRq(request));
+        return ndcMapper.fromOrderViewRs(response);
     }
 
     public RefundResponse processRefund(RefundRequest request) {
-        JsonNode rs = ndcHttpRouter.post(
-                NdcCallSite.REFUND_ORDER_CANCEL,
-                "/ordercancel",
-                ndcMapper.toOrderCancelRq(request));
-        return ndcMapper.fromRefundRs(rs);
+        JsonNode response = post("/ordercancel", ndcMapper.toOrderCancelRq(request));
+        return ndcMapper.fromRefundRs(response);
     }
 
     public ChangeFlightResponse changeFlight(ChangeFlightRequest request) {
         if (request.getNewDepartureCity() != null && request.getNewArrivalCity() != null) {
-            ndcHttpRouter.post(
-                    NdcCallSite.CHANGE_AIRSHOPPING,
-                    "/airshopping",
-                    ndcMapper.toAirShoppingRqFromChange(request));
+            post("/airshopping", ndcMapper.toAirShoppingRqFromChange(request));
         }
-        JsonNode rs = ndcHttpRouter.post(
-                NdcCallSite.CHANGE_ORDER_CHANGE,
-                "/orderchange",
-                ndcMapper.toFlightChangeRq(request));
-        return ndcMapper.fromChangeRs(rs);
+        JsonNode response = post("/orderchange", ndcMapper.toFlightChangeRq(request));
+        return ndcMapper.fromChangeRs(response);
     }
 
     public BaggageResponse purchaseBaggage(BaggageRequest request) {
-        ndcHttpRouter.post(
-                NdcCallSite.BAGGAGE_SERVICE_LIST,
-                "/servicelist",
-                ndcMapper.toServiceListRq(request));
-        JsonNode rs = ndcHttpRouter.post(
-                NdcCallSite.BAGGAGE_ORDER_CHANGE,
-                "/orderchange",
-                ndcMapper.toBaggageOrderChangeRq(request));
-        return ndcMapper.fromBaggageRs(rs);
+        post("/servicelist", ndcMapper.toServiceListRq(request));
+        JsonNode response = post("/orderchange", ndcMapper.toBaggageOrderChangeRq(request));
+        return ndcMapper.fromBaggageRs(response);
+    }
+
+    private JsonNode post(String path, ObjectNode body) {
+        String url = baseUrl() + path;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<JsonNode> response = restTemplate.postForEntity(
+                url, new HttpEntity<>(body, headers), JsonNode.class);
+        JsonNode responseBody = response.getBody();
+        if (responseBody == null || responseBody.isNull()) {
+            throw new IllegalStateException("Empty NDC response from " + url);
+        }
+        logger.info("NDC POST {}", url);
+        return responseBody;
+    }
+
+    private String baseUrl() {
+        String baseUrl = airlineApiConfig.getBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            baseUrl = DEFAULT_BASE_URL;
+        }
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     }
 }

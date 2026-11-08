@@ -1,8 +1,5 @@
 name: demo-ota CI
 
-# AREX replay against api-onpremise-gcp.softprobe.ai is disabled (service retired).
-# Re-enable by restoring scripts/arex-replay-ci.mjs integration when a target exists.
-
 on:
   push:
     branches:
