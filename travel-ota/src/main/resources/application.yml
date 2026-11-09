@@ -47,7 +47,7 @@ app:
   
   # airline API config
   airline:
-    # NDC mock airline worker (https://spair.softprobe.ai)
+    # Hosted NDC airline API (https://spair.softprobe.ai)
     base-url: ${AIRLINE_NDC_BASE_URL:https://spair.softprobe.ai/ndc/v21.3}
     # connection timeout (ms)
     connection-timeout: 5000

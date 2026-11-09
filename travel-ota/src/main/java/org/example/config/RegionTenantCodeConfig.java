@@ -6,8 +6,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 
 /**
- * Demo of the {@code @Value}-on-setter → static field → inner enum snapshot pattern
- * exercised by sp-agent-java Spring config replay.
+ * Regional fare configuration loaded from Spring properties into static region values.
  *
  * <p>Search applies {@linkplain #currentRegion() regional tax} to fare prices internally;
  * nothing about tenants or tax is exposed on the public search API.</p>
@@ -17,7 +16,7 @@ public class RegionTenantCodeConfig {
 
     public static String TENANTCODE_MEA;
     public static String TENANTCODE_EU;
-    /** Active sales region (MEA / EU); replay can inject a different value than at record time. */
+    /** Active sales region (MEA / EU) for fare tax calculation. */
     public static String SALES_REGION;
 
     @Value("${tenant.MEA}")

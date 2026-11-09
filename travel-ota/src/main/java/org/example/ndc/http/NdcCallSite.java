@@ -1,7 +1,7 @@
 package org.example.ndc.http;
 
 /**
- * Identifies which outbound HTTP stack to use for each NDC upstream call (E2E agent coverage).
+ * Identifies the outbound HTTP operation handled by each transport.
  */
 public enum NdcCallSite {
     SEARCH_AIRSHOPPING,

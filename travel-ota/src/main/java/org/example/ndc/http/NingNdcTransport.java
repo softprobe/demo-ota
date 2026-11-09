@@ -12,8 +12,8 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Ning async-http-client transport for NDC refund ({@code /ordercancel}).
- * Waits on a {@link CompletableFuture} instead of {@link ListenableFuture#get()} so agent
- * recording uses the completion-listener path (non-blocking Ning usage).
+ * Waits on a {@link CompletableFuture} instead of {@link ListenableFuture#get()} to use Ning's
+ * non-blocking completion-listener path.
  */
 @Component
 public class NingNdcTransport implements NdcHttpTransport {

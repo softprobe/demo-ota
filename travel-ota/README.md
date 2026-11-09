@@ -45,34 +45,35 @@ A demo flight booking system built with JDK 21 and Spring Boot 3.x. It includes 
    - Pay by PNR
    - Returns ticket number on success
 
-## Spring config replay demo (internal only)
+## Airline HTTP client examples
 
-`RegionTenantCodeConfig` uses `@Value` on setters → static fields → inner enum constants. Search applies **regional tax** to airline fares in `FlightService` (MEA 8%, EU 20% via `tenant.sales-region`); the public search API shape is unchanged.
+The OTA routes different airline operations through the HTTP client libraries used by the demo:
 
-At replay, inject a different `tenant.sales-region` (e.g. `EU` vs recorded `MEA`) so tax — and fare prices — differ; replay diff fails if static config is not refreshed. Test: `mvn test -Dtest=RegionTenantCodeConfigTest`.
+| Airline operation | HTTP client |
+|-------------------|-------------|
+| Flight search (`/airshopping`) | Spring `RestTemplate` |
+| Offer pricing (`/offerprice`) | Apache HttpClient 4 (synchronous) |
+| Order creation (`/ordercreate`) | OkHttp |
+| Payment (`/orderchange`) | Feign |
+| Order retrieval (`/orderretrieve`) | Spring `WebClient` |
+| Refund (`/ordercancel`) | Ning AsyncHttpClient |
+| Change search (`/airshopping`) | JDK `HttpURLConnection` |
+| Flight change (`/orderchange`) | Apache Commons HttpClient 3 |
+| Baggage service list (`/servicelist`) | OkHttp |
+| Baggage order change (`/orderchange`) | Apache HttpClient 4 async |
 
-Workspace E2E: [`arex/e2e/instrumentation-matrix.md`](https://github.com/softprobe/arex/blob/main/e2e/instrumentation-matrix.md).
+These are ordinary application HTTP calls. Instrumentation is supplied externally; the app image has no recording or capture code.
 
-## Instrumentation E2E map
+## Application behavior examples
 
-| Agent module | OTA code path |
-|--------------|---------------|
-| `sp-httpservlet` | `FlightController` — all `/api/flights/*` endpoints |
-| `sp-httpclient-resttemplate-v6` | search → `NdcHttpRouter` / `airshopping` |
-| `sp-httpclient-apache-v4` | book → `/offerprice` |
-| `sp-httpclient-okhttp-v3` | book → `/ordercreate`, baggage |
-| `sp-httpclient-feign` | pay → `/orderchange` |
-| `sp-httpclient-webclient-v6` | order query → `/orderretrieve` |
-| `sp-httpclient-ning` | refund → `/ordercancel` |
-| `sp-httpclient-jdk` | change search → `/airshopping` |
-| `sp-httpclient-apache-v3` | change commit → `/orderchange` |
-| `sp-spring-config` | `RegionTenantCodeConfig` + `RegionalTaxService` (search tax) |
-| `sp-dynamic` | `AuthenticateService.authenticate` on every `/search` |
-| `sp-loader` | fat JAR + embedded Tomcat (multi-classloader) |
+- Flight search calls the internal `AuthenticateService.authenticate` method before requesting airline results.
+- `RegionalTaxService` adjusts returned fares using `tenant.sales-region`: MEA applies 8% tax and EU applies 20%.
 
-`/search` intentionally calls `AuthenticateService` so dynamic-class recording can be verified in `make e2e`.
+## Instrumentation boundary
 
-Replay knob for spring-config: set `tenant.sales-region` (`MEA` = 8% tax, `EU` = 20%) via `application.yml` or `TENANT_SALES_REGION` env at replay time.
+The app image contains no browser SDK, Java agent, OBI, recording or capture
+code, Softprobe credentials, or instrumentation configuration. Test and
+deployment systems supply instrumentation outside the app image.
 
 ## Tech stack
 
@@ -131,9 +132,9 @@ travel-ota
    mvn clean install -DskipTests
    ```
 
-2. Start the OTA service
+2. Start the OTA service with Spring Boot
    ```bash
-   ./run.sh
+   java -jar target/travel-ota-1.0-SNAPSHOT.jar
    ```
 
 3. Open http://localhost:8080

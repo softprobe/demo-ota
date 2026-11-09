@@ -23,7 +23,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <httpclient.version>4.5.14</httpclient.version>
         <httpasyncclient.version>4.1.5</httpasyncclient.version>
-        <okhttp.version>4.12.0</okhttp.version>
+        <okhttp.version>4.11.0</okhttp.version>
         <feign.version>13.5</feign.version>
         <ning-async-http-client.version>1.9.40</ning-async-http-client.version>
     </properties>
@@ -54,7 +54,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- WireMock stubs for NDC upstream (rigid Softprobe-style replay fixtures) -->
+        <!-- WireMock stubs for the NDC upstream; test scope only -->
         <dependency>
             <groupId>org.wiremock</groupId>
             <artifactId>wiremock-standalone</artifactId>
@@ -69,7 +69,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Outbound HTTP clients (one per NDC call site for agent E2E coverage) -->
+        <!-- Outbound HTTP clients used by the NDC operations -->
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>

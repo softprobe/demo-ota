@@ -9,7 +9,7 @@ The OTA calls the deployed Cloudflare airline service at `https://spair.softprob
 Requirements: Docker and an API key for at least one model provider. API keys stay in the container environment and are never sent to the browser. The model selector lists configured providers; enter a model ID supported by the selected provider.
 
 ```sh
-DEMO_IMAGE=gcr.io/cs-poc-sasxbttlzroculpau4u6e2l/demo-ota:your-tag
+DEMO_IMAGE=docker.io/softprobe/demo-ota:v1.3.0
 docker pull "$DEMO_IMAGE"
 docker run --rm --init \
   --publish 127.0.0.1:8080:8080 \
@@ -19,7 +19,7 @@ docker run --rm --init \
 
 Open [http://127.0.0.1:8080/](http://127.0.0.1:8080/) for the original OTA web app or [http://127.0.0.1:8080/agent](http://127.0.0.1:8080/agent) for the agent. The single container starts the Java OTA on an internal port and exposes the Node gateway on port 8080; the gateway proxies the original OTA site and APIs.
 
-To run a locally built image, build from the repository root with `docker build -f travel-ota/Dockerfile -t demo-ota:local .`, then use `DEMO_IMAGE=demo-ota:local npm run demo` from this directory. `npm run demo` runs that one image with `docker run`; it does not start Compose services.
+To run a locally built image, build from the repository root with `docker build -f travel-ota/Dockerfile -t demo-ota:local .`, then use `DEMO_IMAGE=demo-ota:local npm run demo` from this directory. `npm run demo` runs that one image with `docker run`; it does not start Compose services. The image is a plain application and contains no Softprobe instrumentation.
 
 Provider environment variables:
 

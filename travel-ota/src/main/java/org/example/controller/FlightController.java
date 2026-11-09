@@ -1,19 +1,17 @@
 package org.example.controller;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.example.model.*;
+import org.example.service.AuthenticateService;
 import org.example.service.FlightService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import jakarta.servlet.http.HttpServletRequest;
-
-import org.example.service.AuthenticateService;
 
 @RestController
 @RequestMapping("/api/flights")
@@ -28,19 +26,10 @@ public class FlightController {
     private AuthenticateService authenticateService;
 
     @PostMapping("/search")
-    public ResponseEntity<Object> searchFlights(@Valid @RequestBody FlightSearchRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<Object> searchFlights(@Valid @RequestBody FlightSearchRequest request) {
         try {
-            // Log request headers
-            System.out.println("=== Request Headers for /search ===");
-            httpRequest.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-                String headerValue = httpRequest.getHeader(headerName);
-                logger.info("{}: {}", headerName, headerValue);
-            });
-
-            // Call internal AuthenticateService to demonstrate dynamic class recording/mocking
             boolean authenticated = authenticateService.authenticate("user_e2e", "pass_secret");
             logger.info("Internal Authentication Service result: {}", authenticated);
-
             FlightSearchResponse response = flightService.searchFlights(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -54,17 +43,9 @@ public class FlightController {
     }
 
     @PostMapping("/book")
-    public ResponseEntity<Object> bookFlight(@Valid @RequestBody BookingRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<Object> bookFlight(@Valid @RequestBody BookingRequest request) {
         try {
-            // Log request headers
-            System.out.println("=== Request Headers for /book ===");
-            httpRequest.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-                String headerValue = httpRequest.getHeader(headerName);
-                logger.info("{}: {}", headerName, headerValue);
-            });
-
             BookingResponse response = flightService.bookFlight(request);
-            logger.info("Booking response: {}", response);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             // Return detailed error information
@@ -77,15 +58,8 @@ public class FlightController {
     }
 
     @PostMapping("/payandissue")
-    public ResponseEntity<PaymentResponse> payAndIssue(@Valid @RequestBody PaymentRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<PaymentResponse> payAndIssue(@Valid @RequestBody PaymentRequest request) {
         try {
-            // Log request headers
-            System.out.println("=== Request Headers for /payandissue ===");
-            httpRequest.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-                String headerValue = httpRequest.getHeader(headerName);
-                logger.info("{}: {}", headerName, headerValue);
-            });
-
             PaymentResponse response = flightService.payAndIssue(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -94,14 +68,8 @@ public class FlightController {
     }
 
     @PostMapping("/orders/query")
-    public ResponseEntity<Object> queryOrder(@Valid @RequestBody OrderQueryRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<Object> queryOrder(@Valid @RequestBody OrderQueryRequest request) {
         try {
-            System.out.println("=== Request Headers for /orders/query ===");
-            httpRequest.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-                String headerValue = httpRequest.getHeader(headerName);
-                logger.info("{}: {}", headerName, headerValue);
-            });
-
             BookingResponse response = flightService.queryOrder(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -114,14 +82,8 @@ public class FlightController {
     }
 
     @PostMapping("/refund/process")
-    public ResponseEntity<Object> processRefund(@Valid @RequestBody RefundRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<Object> processRefund(@Valid @RequestBody RefundRequest request) {
         try {
-            System.out.println("=== Request Headers for /refund/process ===");
-            httpRequest.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-                String headerValue = httpRequest.getHeader(headerName);
-                logger.info("{}: {}", headerName, headerValue);
-            });
-
             RefundResponse response = flightService.processRefund(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -134,14 +96,8 @@ public class FlightController {
     }
 
     @PostMapping("/change")
-    public ResponseEntity<Object> changeFlight(@Valid @RequestBody ChangeFlightRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<Object> changeFlight(@Valid @RequestBody ChangeFlightRequest request) {
         try {
-            System.out.println("=== Request Headers for /change ===");
-            httpRequest.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-                String headerValue = httpRequest.getHeader(headerName);
-                logger.info("{}: {}", headerName, headerValue);
-            });
-
             ChangeFlightResponse response = flightService.changeFlight(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -154,14 +110,8 @@ public class FlightController {
     }
 
     @PostMapping("/baggage/purchase")
-    public ResponseEntity<Object> purchaseBaggage(@Valid @RequestBody BaggageRequest request, HttpServletRequest httpRequest) {
+    public ResponseEntity<Object> purchaseBaggage(@Valid @RequestBody BaggageRequest request) {
         try {
-            System.out.println("=== Request Headers for /baggage/purchase ===");
-            httpRequest.getHeaderNames().asIterator().forEachRemaining(headerName -> {
-                String headerValue = httpRequest.getHeader(headerName);
-                logger.info("{}: {}", headerName, headerValue);
-            });
-
             BaggageResponse response = flightService.purchaseBaggage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {

@@ -14,10 +14,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     bookingResult = JSON.parse(bookingData);
     
-    // Debug: Log the booking result to console
-    console.log('Booking Result:', bookingResult);
-    console.log('Payment Info:', bookingResult.paymentInfo);
-    
     // Render page
     renderFlightInfo();
     renderPriceSummary();
@@ -146,7 +142,6 @@ function selectPaymentMethod(method) {
 
 // Process payment
 async function processPayment() {
-    console.log('processPayment function called');
     
     if (!selectedPaymentMethod) {
         alert('Please select a payment method');
@@ -187,13 +182,10 @@ async function processPayment() {
             } : {}
         };
         
-        console.log('Sending payment data:', paymentData);
-        
         const response = await fetch('/api/flights/payandissue', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-sp-session-id': getSessionId()
             },
             body: JSON.stringify(paymentData)
         });
@@ -202,29 +194,18 @@ async function processPayment() {
             let result;
             try {
                 result = await response.json();
-                console.log('Payment API response received:', result);
-                console.log('Response status:', response.status);
-                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                const responseText = await response.text();
-                console.error('Raw response text:', responseText);
+            } catch {
                 alert('Payment completed but response format is invalid. Please contact support.');
                 return;
             }
             
             if (result && result.status === 'SUCCESS') {
-                console.log('Payment successful, calling showPaymentSuccess');
                 showPaymentSuccess(result);
             } else {
-                console.error('Payment API returned success but with unexpected status:', result);
                 alert('Payment completed but with unexpected status. Please contact support.');
             }
         } else {
-            const errorText = await response.text();
-            console.error('Payment failed with status:', response.status);
-            console.error('Error response:', errorText);
-            alert(`Payment failed with status ${response.status}. Check console for details.`);
+            alert(`Payment failed with status ${response.status}.`);
         }
     } catch (error) {
         console.error('Payment error:', error);
@@ -239,11 +220,10 @@ async function processPayment() {
 // Show payment success
 function showPaymentSuccess(paymentResult) {
     try {
-        console.log('Processing payment success with result:', paymentResult);
         
         // Validate required fields
         if (!paymentResult || !paymentResult.status) {
-            console.error('Invalid payment result:', paymentResult);
+            console.error('Invalid payment result.');
             alert('Payment result is invalid. Please contact support.');
             return;
         }
@@ -308,7 +288,6 @@ function showPaymentSuccess(paymentResult) {
             </div>
         `;
         
-        console.log('Payment success page rendered successfully');
     } catch (error) {
         console.error('Error rendering payment success:', error);
         alert('Error displaying payment success. Please contact support.');

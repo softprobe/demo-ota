@@ -119,7 +119,6 @@ async function handleSearch(event) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-sp-session-id': getSessionId()
             },
             body: JSON.stringify(searchData)
         });
