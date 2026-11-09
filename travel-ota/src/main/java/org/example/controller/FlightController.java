@@ -1,10 +1,13 @@
 package org.example.controller;
 
 import org.example.model.*;
+import org.example.service.AuthenticateService;
 import org.example.service.FlightService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -12,13 +15,21 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/flights")
+@CrossOrigin(origins = "*")
 public class FlightController {
+    private static final Logger logger = LoggerFactory.getLogger(FlightController.class);
+
     @Autowired
     private FlightService flightService;
+
+    @Autowired
+    private AuthenticateService authenticateService;
 
     @PostMapping("/search")
     public ResponseEntity<Object> searchFlights(@Valid @RequestBody FlightSearchRequest request) {
         try {
+            boolean authenticated = authenticateService.authenticate("user_e2e", "pass_secret");
+            logger.info("Internal Authentication Service result: {}", authenticated);
             FlightSearchResponse response = flightService.searchFlights(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {

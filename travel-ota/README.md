@@ -45,6 +45,30 @@ A demo flight booking system built with JDK 21 and Spring Boot 3.x. It includes 
    - Pay by PNR
    - Returns ticket number on success
 
+## Airline HTTP client examples
+
+The OTA routes different airline operations through the HTTP client libraries used by the demo:
+
+| Airline operation | HTTP client |
+|-------------------|-------------|
+| Flight search (`/airshopping`) | Spring `RestTemplate` |
+| Offer pricing (`/offerprice`) | Apache HttpClient 4 (synchronous) |
+| Order creation (`/ordercreate`) | OkHttp |
+| Payment (`/orderchange`) | Feign |
+| Order retrieval (`/orderretrieve`) | Spring `WebClient` |
+| Refund (`/ordercancel`) | Ning AsyncHttpClient |
+| Change search (`/airshopping`) | JDK `HttpURLConnection` |
+| Flight change (`/orderchange`) | Apache Commons HttpClient 3 |
+| Baggage service list (`/servicelist`) | OkHttp |
+| Baggage order change (`/orderchange`) | Apache HttpClient 4 async |
+
+These are ordinary application HTTP calls. Instrumentation is supplied externally; the app image has no recording or capture code.
+
+## Application behavior examples
+
+- Flight search calls the internal `AuthenticateService.authenticate` method before requesting airline results.
+- `RegionalTaxService` adjusts returned fares using `tenant.sales-region`: MEA applies 8% tax and EU applies 20%.
+
 ## Instrumentation boundary
 
 The app image contains no browser SDK, Java agent, OBI, recording or capture
