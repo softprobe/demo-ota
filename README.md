@@ -34,6 +34,19 @@ docker build -f travel-ota/Dockerfile -t demo-ota:local .
 
 The build includes the Java OTA and Node agent in one image. See the [travel agent README](travel-agent-demo/README.md) for `docker run` instructions.
 
+## Release
+
+Push a version tag to run `.github/workflows/release.yml`:
+
+```bash
+git tag v1.3.1
+git push origin v1.3.1
+```
+
+The workflow publishes `docker.io/softprobe/demo-ota:<tag>` and `:latest` for `linux/amd64` and `linux/arm64`. It also creates a GitHub Release with `travel-ota.jar`.
+
+The workflow uses the organization variable `DOCKER_HUB_USERNAME` and secret `DOCKERHUB_TOKEN` to log in to Docker Hub.
+
 ## Configuration
 
 ```bash
