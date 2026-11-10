@@ -22,7 +22,7 @@
         <span class="environment">Staging demo</span>
       </div>
       <div class="topbar-actions">
-        <details class="connection-details">
+        <details class="connection-details" hidden>
           <summary>
             <span id="connection-dot" class="connection-dot" aria-hidden="true"></span>
             <span id="connection-label">Connecting</span>
@@ -56,14 +56,14 @@
           <div class="conversation-meta">
             <span id="conversation-state" class="sr-only" role="status">No session yet</span>
             <a id="trip-link" class="text-link" href="#trip-panel" hidden>Review trip</a>
-            <a id="softprobe-link" class="text-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hidden>Open in Softprobe <span class="sr-only">(opens in a new tab)</span></a>
+            <a id="softprobe-link" class="button button-softprobe" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hidden>Open in Softprobe ↗<span class="sr-only"> (opens in a new tab)</span></a>
           </div>
         </header>
 
         <div id="conversation-scroll" class="conversation-scroll" tabindex="-1" aria-label="Scrollable conversation">
           <section id="empty-state" class="empty-conversation" aria-labelledby="empty-title">
             <h2 id="empty-title">Where would you like to go?</h2>
-
+            <p>One-way economy for 1 adult · e.g. LHR to CDG on 2026-11-12 for Alex Demo.</p>
           </section>
           <ol id="messages" class="messages" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions text"></ol>
           <details id="conversation-actions" class="conversation-actions" hidden>
@@ -110,7 +110,7 @@
             <p id="booking-verification-note" class="small"></p>
             <div id="skipped-approval-receipt" class="skipped-approval-receipt" hidden>
               <p class="small">Silent bug injected: manager approval was skipped. The booking API returned success.</p>
-              <a id="booking-softprobe-link" class="text-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hidden>Open in Softprobe <span class="sr-only">(opens in a new tab)</span></a>
+              <a id="booking-softprobe-link" class="button button-confirm" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" hidden>Open in Softprobe ↗<span class="sr-only"> (opens in a new tab)</span></a>
             </div>
             <dl id="booking-details" class="detail-list"></dl>
             <p class="reservation-disclaimer">Unpaid · Not ticketed</p>
@@ -145,7 +145,6 @@
 
           <section id="offers-section" class="panel-section" aria-labelledby="offers-title" hidden>
             <div class="panel-heading"><h3 id="offers-title">Flight &amp; fare choices</h3><span id="offers-count" class="small muted"></span></div>
-            <p class="small muted">Times are shown as returned. The mock service does not provide time-zone data.</p>
             <ol id="offers" class="offers"></ol>
           </section>
 

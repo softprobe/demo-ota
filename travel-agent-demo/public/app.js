@@ -330,7 +330,7 @@
     const endpoint = element('div', 'flight-endpoint');
     endpoint.append(element('p', 'airport', text(airport, '—')));
     const raw = text(value, 'Time not returned');
-    const match = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:\d{2})?$/);
+    const match = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/);
     const time = element('time', 'flight-time', match
       ? `${match[2]}${match[3] ? ` ${match[3] === 'Z' ? 'UTC' : match[3]}` : ''}` : raw);
     time.title = raw;
@@ -353,11 +353,7 @@
     const fare = element('div', 'fare-line');
     fare.append(element('p', 'fare-price', money(offer?.total, offer?.currency)),
       element('p', 'fare-cabin', text(offer?.cabinClass, 'Cabin not returned')));
-    const details = element('details', 'fare-details');
-    const list = element('dl', 'detail-list');
-    details.append(element('summary', '', 'Offer details'), list);
-    fillDetails(list, [['Offer ID', offer?.id], ['Flight ID', offer?.flightId], ['Fare ID', offer?.fareId]]);
-    summary.append(route, fare, details);
+    summary.append(route, fare);
     return summary;
   }
 
@@ -472,6 +468,7 @@
     setText(ui.pendingStatus, label);
     ui.pendingStatus.dataset.state = pending.status === 'uncertain' ? 'uncertain' : 'review';
     setText(ui.pendingDetail, detail);
+    ui.pendingDetail.hidden = pending.status === 'awaiting_approval' && !expiredHere && !awaitingManagerApproval();
     const managerStates = {
       not_requested: 'Manager approval not requested.',
       pending: 'Manager approval pending.',
@@ -479,6 +476,7 @@
       unsupported_currency: 'Manager approval policy cannot be evaluated for this currency.',
     };
     setText(ui.managerStatus, managerStates[pending.managerApproval?.status] || 'Manager approval status not returned.');
+    ui.managerStatus.hidden = ['not_requested', 'not_required'].includes(pending.managerApproval?.status);
     let hint = '';
     if (pending.status === 'awaiting_approval') {
       if (state.approvalRequestId === pending.id) hint = 'Confirmation was attempted for this request. Check its status in chat before making a new request.';
@@ -517,7 +515,7 @@
 
     ui.pending.hidden = !pending || completed;
     ui.booking.hidden = !booking;
-    ui.offersSection.hidden = offers.length === 0 || completed;
+    ui.offersSection.hidden = offers.length === 0 || Boolean(pending) || completed;
     setText(ui.tripLink, pending?.status === 'awaiting_approval' ? 'Review booking' : 'Review trip');
 
     const nextPending = JSON.stringify(pending);
@@ -527,12 +525,13 @@
       ui.passenger.replaceChildren();
       if (pending) {
         ui.pendingOffer.append(flightSummary(pending.offer));
-        fillDetails(ui.passenger, [['Synthetic traveler', fullName(pending.passenger)], ['Request ID', pending.id]]);
+        fillDetails(ui.passenger, [['Traveler', fullName(pending.passenger)]]);
         const expires = expiryTime(pending);
         setText(ui.expiry, Number.isFinite(expires)
           ? `Review expires ${new Date(expires).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long' })}`
           : 'Review expiry not returned.');
         ui.expiry.title = text(pending.expiresAt, '');
+        ui.expiry.hidden = true;
       }
     }
 
