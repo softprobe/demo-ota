@@ -7,6 +7,7 @@ import org.example.entity.Order;
 import org.example.entity.Passenger;
 import org.example.model.AirlineRefundRequest;
 import org.example.repository.OrderRepository;
+import org.example.repository.RefundFeeAuditRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +27,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -67,6 +69,9 @@ public class FlightService {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private RefundFeeAuditRepository refundFeeAuditRepository;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -204,7 +209,8 @@ public class FlightService {
 
     /**
      * 退票:JPA 查订单 → 本地计算手续费 → 调 sp-airline /refund/process(带上手续费
-     * 供航司对账)→ 以本地计费覆盖响应金额 → JPA 置 REFUNDED → 失效缓存。
+     * 供航司对账)→ 以本地计费覆盖响应金额 → 记手续费审计 → 失效缓存。
+     * 订单状态由航司退票回调统一回写为 REFUNDED。
      *
      * <p>手续费按平台收费政策在 travel-ota 侧计算(航司只负责退票执行,不参与定价),
      * 响应给用户的金额一律以平台计费为准。
@@ -239,14 +245,26 @@ public class FlightService {
             response.setCurrency(order.getCurrency());
         }
 
-        // DB —— 置为已退票(定向 UPDATE,理由同 payAndIssue)
+        // 订单状态改由航司退票回调统一回写,这里不再直接置 REFUNDED;
+        // 同时按新收费口径记一条手续费审计,便于手续费争议时回查
         if ("SUCCESS".equals(response.getStatus())) {
-            orderRepository.updateStatus(order.getBookingId(), "REFUNDED");
-            logger.info("Order marked REFUNDED: bookingId={}", order.getBookingId());
+            recordRefundFeeAudit(order, hoursUntilDeparture, cancellationFee, netRefundAmount);
             evictOrderCache(order);
         }
 
         return response;
+    }
+
+    /** 手续费审计是留底用的,写失败不影响退票本身。 */
+    private void recordRefundFeeAudit(Order order, long hoursUntilDeparture,
+                                      BigDecimal cancellationFee, BigDecimal netRefundAmount) {
+        try {
+            refundFeeAuditRepository.insertAudit(UUID.randomUUID().toString(), order.getBookingId(),
+                    hoursUntilDeparture, cancellationFee, netRefundAmount);
+            logger.info("Refund fee audit recorded: bookingId={}, fee={}", order.getBookingId(), cancellationFee);
+        } catch (RuntimeException e) {
+            logger.warn("Refund fee audit failed, refund continues: bookingId={}", order.getBookingId(), e);
+        }
     }
 
     // ==================== FLIGHT CHANGE ====================
@@ -352,7 +370,7 @@ public class FlightService {
         // 个人原因 —— 按距起飞时长分档
         if (hoursUntilDeparture > 72) {
             return scale(totalAmount.multiply(new BigDecimal("0.15"))); // 15%
-        } else if (hoursUntilDeparture > 24) {
+        } else if (hoursUntilDeparture > 48) {
             return scale(totalAmount.multiply(new BigDecimal("0.30"))); // 30%
         } else {
             return scale(totalAmount.multiply(new BigDecimal("0.50"))); // 50%
