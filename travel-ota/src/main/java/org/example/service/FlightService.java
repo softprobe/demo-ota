@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.config.AirlineApiConfig;
 import org.example.entity.Order;
 import org.example.entity.Passenger;
+import org.example.model.AirlineRefundRequest;
 import org.example.repository.OrderRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -202,8 +203,8 @@ public class FlightService {
     // ==================== REFUND ====================
 
     /**
-     * 退票:JPA 查订单 → 本地计算手续费 → 调 sp-airline /refund/process → 以本地
-     * 计费覆盖响应金额 → JPA 置 REFUNDED → 失效缓存。
+     * 退票:JPA 查订单 → 本地计算手续费 → 调 sp-airline /refund/process(带上手续费
+     * 供航司对账)→ 以本地计费覆盖响应金额 → JPA 置 REFUNDED → 失效缓存。
      *
      * <p>手续费按平台收费政策在 travel-ota 侧计算(航司只负责退票执行,不参与定价),
      * 响应给用户的金额一律以平台计费为准。
@@ -221,11 +222,12 @@ public class FlightService {
         logger.info("Refund fee computed locally: hoursUntilDeparture={}, reason={}, fee={}, net={}",
                 hoursUntilDeparture, request.getRefundReason(), cancellationFee, netRefundAmount);
 
-        // HTTP —— 调 sp-airline 执行退票
+        // HTTP —— 调 sp-airline 执行退票,手续费随请求报给航司对账
         String url = airlineApiConfig.getBaseUrl() + REFUND_PROCESS_ENDPOINT;
+        AirlineRefundRequest airlineRequest = AirlineRefundRequest.of(request, cancellationFee, netRefundAmount);
         logger.info("Calling airline API for refund at: {}", url);
-        logger.info("Refund request: {}", request);
-        RefundResponse response = postToAirline(url, request, RefundResponse.class,
+        logger.info("Refund request: {}", airlineRequest);
+        RefundResponse response = postToAirline(url, airlineRequest, RefundResponse.class,
                 "Failed to process refund through airline API", "refund processing");
         logger.info("Airline API refund response body: {}", response);
 
