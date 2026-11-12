@@ -39,8 +39,8 @@ The build includes the Java OTA and Node agent in one image. See the [travel age
 Push a version tag to run `.github/workflows/release.yml`:
 
 ```bash
-git tag v1.3.1
-git push origin v1.3.1
+git tag v1.3.2
+git push origin v1.3.2
 ```
 
 The workflow publishes `docker.io/softprobe/demo-ota:<tag>` and `:latest` for `linux/amd64` and `linux/arm64`. It also creates a GitHub Release with `travel-ota.jar`.

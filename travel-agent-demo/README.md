@@ -9,7 +9,7 @@ The OTA calls the deployed Cloudflare airline service at `https://spair.softprob
 Requirements: Docker and an API key for at least one model provider. API keys stay in the container environment and are never sent to the browser. The model selector lists configured providers; enter a model ID supported by the selected provider.
 
 ```sh
-DEMO_IMAGE=docker.io/softprobe/demo-ota:v1.3.0
+DEMO_IMAGE=docker.io/softprobe/demo-ota:v1.3.2
 docker pull "$DEMO_IMAGE"
 docker run --rm --init \
   --publish 127.0.0.1:8080:8080 \

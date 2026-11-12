@@ -222,8 +222,6 @@ export class VercelAIEngine {
       maxOutputTokens: 1024,
       abortSignal: controller.signal,
       timeout: typeof timeout === 'number' ? { totalMs: timeout } : timeout,
-      runtimeContext: { sessionId: id },
-      telemetry: { includeRuntimeContext: { sessionId: true } },
     });
     session.busy = true;
     session.controller = controller;
