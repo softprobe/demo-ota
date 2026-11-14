@@ -25,9 +25,13 @@ function systemPromptForDate(now) {
   return `${SYSTEM_PROMPT}\nCurrent date (UTC): ${today}. Resolve yearless month/day dates using this date. Search at most once per user travel request; reuse the latest matching search results when the user selects an option or supplies their name. If the app supplies a selected offerId, prepare that exact offer after collecting any missing name; a name reply is never a reason to search again. If no matching search result exists yet, search once when origin, destination, and date are known. After travel_prepare succeeds, stop using tools and say briefly that the review is ready in the trip panel.`;
 }
 
+function googleApiKey(env = process.env) {
+  return env.GEMINI_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY;
+}
+
 export function configuredProviders(env = process.env) {
   const result = [];
-  if (env.GOOGLE_GENERATIVE_AI_API_KEY) result.push({ id: 'google', ...PROVIDER_INFO.google });
+  if (googleApiKey(env)) result.push({ id: 'google', ...PROVIDER_INFO.google });
   if (env.OPENAI_API_KEY) result.push({ id: 'openai', ...PROVIDER_INFO.openai });
   if (env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN) result.push({ id: 'anthropic', ...PROVIDER_INFO.anthropic });
   if (env.AI_GATEWAY_API_KEY || env.VERCEL_OIDC_TOKEN) result.push({ id: 'gateway', ...PROVIDER_INFO.gateway });
@@ -58,7 +62,7 @@ function safeModelId(value) {
 
 function cleanError(error, env) {
   let message = String(error?.message ?? 'The model request failed.');
-  for (const key of ['GOOGLE_GENERATIVE_AI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'AI_GATEWAY_API_KEY', 'VERCEL_OIDC_TOKEN', 'AI_COMPATIBLE_API_KEY']) {
+  for (const key of ['GEMINI_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'AI_GATEWAY_API_KEY', 'VERCEL_OIDC_TOKEN', 'AI_COMPATIBLE_API_KEY']) {
     const secret = env[key];
     if (typeof secret === 'string' && secret.length > 0) message = message.replaceAll(secret, '[redacted]');
   }
@@ -100,7 +104,7 @@ export class VercelAIEngine {
 
   languageModel(provider, modelId) {
     const selected = this.resolveSelection(provider, modelId);
-    if (selected.provider === 'google') return createGoogleGenerativeAI({ apiKey: this.env.GOOGLE_GENERATIVE_AI_API_KEY })(selected.model);
+    if (selected.provider === 'google') return createGoogleGenerativeAI({ apiKey: googleApiKey(this.env) })(selected.model);
     if (selected.provider === 'openai') return createOpenAI({ apiKey: this.env.OPENAI_API_KEY })(selected.model);
     if (selected.provider === 'anthropic') {
       const credentials = this.env.ANTHROPIC_AUTH_TOKEN ? { authToken: this.env.ANTHROPIC_AUTH_TOKEN } : { apiKey: this.env.ANTHROPIC_API_KEY };

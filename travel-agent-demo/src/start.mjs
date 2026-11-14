@@ -10,7 +10,7 @@ import { createGateway } from './server.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const runtime = join(root, '.runtime');
 const port = Number(process.env.TRAVEL_AGENT_PORT ?? 4310);
-const host = process.env.TRAVEL_AGENT_HOST ?? '127.0.0.1';
+const host = process.env.TRAVEL_AGENT_HOST ?? '0.0.0.0';
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('TRAVEL_AGENT_PORT must be a valid TCP port.');
 const travel = new TravelAPI({ baseUrl: process.env.TRAVEL_OTA_BASE_URL ?? 'http://127.0.0.1:8080' });
 mkdirSync(runtime, { recursive: true, mode: 0o700 });
@@ -55,7 +55,7 @@ async function start() {
   const store = new BookingStore({ filePath: join(runtime, 'bookings.json') });
   const health = await engine.start();
   if (stopping) return;
-  server = createGateway({ root, engine, store, internalToken, travel, maxConversations: null, basePath: '/agent' });
+  server = createGateway({ root, engine, store, internalToken, travel, maxConversations: null, basePath: '/agent', allowAnyHost: !['127.0.0.1', 'localhost', '::1'].includes(host) });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   if (stopping) return;
   console.log(`Travel OTA web app: http://127.0.0.1:${port}/`);

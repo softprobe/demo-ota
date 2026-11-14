@@ -32,7 +32,7 @@ function proxyToTravel(req, res, baseUrl) {
   req.pipe(outgoing);
 }
 
-export function createGateway({ root, engine, store, internalToken, travel = new TravelAPI(), maxConversations = 3, basePath = '', registryFilePath = join(root, '.runtime/sessions.json') }) {
+export function createGateway({ root, engine, store, internalToken, travel = new TravelAPI(), maxConversations = 3, basePath = '', allowAnyHost = false, registryFilePath = join(root, '.runtime/sessions.json') }) {
   if (basePath && (!/^\/[A-Za-z0-9_-]+$/.test(basePath))) throw new Error('basePath must be a single URL path segment.');
   const records = registryFilePath && existsSync(registryFilePath) ? JSON.parse(readFileSync(registryFilePath, 'utf8')) : [];
   if (!Array.isArray(records) || (maxConversations !== null && records.length > 100) || records.some(record => !/^ses_[A-Za-z0-9_-]+$/.test(record.id ?? '') || typeof record.used !== 'boolean' || !Number.isInteger(record.turnCount))) throw new Error('Invalid saved session registry; refusing to reset the usage limit.');
@@ -115,7 +115,7 @@ export function createGateway({ root, engine, store, internalToken, travel = new
     catch { reply(res, 400, { error: 'Invalid request URL.' }); return; }
     const localPath = appPath(path);
     if (basePath && localPath === null) {
-      try { guardBrowserRequest(req, port); proxyToTravel(req, res, travel.baseUrl); }
+      try { guardBrowserRequest(req, port, { allowAnyHost }); proxyToTravel(req, res, travel.baseUrl); }
       catch (error) { if (!res.headersSent) reply(res, error.statusCode ?? 400, { error: String(error.message).slice(0, 700) }); }
       return;
     }
@@ -176,7 +176,7 @@ export function createGateway({ root, engine, store, internalToken, travel = new
         return reply(res, 200, result);
       }
 
-      guardBrowserRequest(req, port);
+      guardBrowserRequest(req, port, { allowAnyHost });
       if (req.method === 'GET' && STATIC[route]) {
         const [name, contentType] = STATIC[route];
         const body = await readFile(join(root, 'public', name));

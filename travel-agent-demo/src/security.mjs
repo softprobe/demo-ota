@@ -2,10 +2,11 @@ import { timingSafeEqual } from 'node:crypto';
 
 export function publicError(message, statusCode = 400) { return Object.assign(new Error(message), { statusCode }); }
 
-export function guardBrowserRequest(req, port) {
+export function guardBrowserRequest(req, port, { allowAnyHost = false } = {}) {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
-  if (!hosts.has(req.headers.host)) throw publicError('Invalid local host.', 403);
-  const allowedOrigins = new Set([...hosts].map(host => `http://${host}`));
+  const host = req.headers.host;
+  if (!host || (!allowAnyHost && !hosts.has(host))) throw publicError('Invalid local host.', 403);
+  const allowedOrigins = allowAnyHost ? new Set([`http://${host}`, `https://${host}`]) : new Set([...hosts].map(item => `http://${item}`));
   if (req.headers.origin && !allowedOrigins.has(req.headers.origin)) throw publicError('Cross-origin requests are not allowed.', 403);
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (!allowedOrigins.has(req.headers.origin)) throw publicError('A same-origin browser request is required.', 403);
