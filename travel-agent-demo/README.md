@@ -13,7 +13,7 @@ DEMO_IMAGE=docker.io/softprobe/demo-ota:v1.3.2
 docker pull "$DEMO_IMAGE"
 docker run --rm --init \
   --publish 127.0.0.1:8080:8080 \
-  --env GOOGLE_GENERATIVE_AI_API_KEY \
+  --env GEMINI_KEY \
   "$DEMO_IMAGE"
 ```
 
@@ -23,7 +23,7 @@ To run a locally built image, build from the repository root with `docker build 
 
 Provider environment variables:
 
-- `GOOGLE_GENERATIVE_AI_API_KEY` for Gemini.
+- `GEMINI_KEY` (or `GOOGLE_GENERATIVE_AI_API_KEY`) for Gemini.
 - `OPENAI_API_KEY` for OpenAI.
 - `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` for Anthropic.
 - `AI_GATEWAY_API_KEY` (or Vercel's `VERCEL_OIDC_TOKEN`) for Vercel AI Gateway model IDs in `provider/model` form.

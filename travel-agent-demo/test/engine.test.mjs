@@ -5,6 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configuredProviders, defaultModelSelection, VercelAIEngine } from '../src/engine.mjs';
 
+test('provider discovery accepts GEMINI_KEY without exposing credentials', () => {
+  const env = { GEMINI_KEY: 'gemini-key-secret' };
+  const providers = configuredProviders(env);
+  assert.deepEqual(providers.map(provider => provider.id), ['google']);
+  assert.equal(JSON.stringify(providers).includes('gemini-key-secret'), false);
+  assert.deepEqual(defaultModelSelection(env), { provider: 'google', model: 'gemini-3.8-flash' });
+});
+
 test('provider discovery returns configured choices without exposing credentials', () => {
   const env = {
     GOOGLE_GENERATIVE_AI_API_KEY: 'google-test-secret',

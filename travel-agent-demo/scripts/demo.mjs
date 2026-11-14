@@ -16,6 +16,7 @@ try { await run(docker, ['info', '--format', '{{.ServerVersion}}'], 'ignore'); }
 catch { throw new Error('Start Docker and wait for its engine to be ready, then run npm run demo again.'); }
 
 const providerEnvironment = [
+  'GEMINI_KEY',
   'GOOGLE_GENERATIVE_AI_API_KEY',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',

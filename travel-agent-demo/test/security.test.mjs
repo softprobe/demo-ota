@@ -16,3 +16,11 @@ test('internal travel tool endpoints require their separate process capability',
   assert.equal(checkInternalToken('Bearer wrong', 'test-capability'), false);
   assert.equal(checkInternalToken(undefined, 'test-capability'), false);
 });
+
+test('allowAnyHost permits LAN host headers while preserving same-origin and JSON checks', () => {
+  const req = { method: 'POST', headers: { host: '10.0.0.170:4310', origin: 'http://10.0.0.170:4310', 'content-type': 'application/json' } };
+  assert.doesNotThrow(() => guardBrowserRequest(req, 4310, { allowAnyHost: true }));
+  assert.doesNotThrow(() => guardBrowserRequest({ method: 'GET', headers: { host: '10.0.0.170:4310' } }, 4310, { allowAnyHost: true }));
+  assert.throws(() => guardBrowserRequest({ ...req, headers: { ...req.headers, origin: 'http://127.0.0.1:4310' } }, 4310, { allowAnyHost: true }));
+  assert.throws(() => guardBrowserRequest({ ...req, headers: { ...req.headers, 'content-type': 'text/plain' } }, 4310, { allowAnyHost: true }));
+});
