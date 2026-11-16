@@ -1,0 +1,41 @@
+services:
+  demo-ota:
+    build:
+      context: .
+      dockerfile: blackbox/Dockerfile
+    environment:
+      INGESTION_KEY: ${INGESTION_KEY:?Set INGESTION_KEY to your Softprobe Explorer Ingestion Key}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-https://explorer.softprobe.ai/api/thelake/v1/traces}
+      OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: http/protobuf
+      OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment.name=demo}
+      SOFTPROBE_ENVIRONMENT: ${SOFTPROBE_ENVIRONMENT:-demo}
+      TRAVEL_AGENT_PORT: 4310
+      TRAVEL_AGENT_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      TRAVEL_OTA_BASE_URL: http://127.0.0.1:8080
+    ports:
+      - "4310:4310"
+
+  obi:
+    build:
+      context: .
+      dockerfile: blackbox/Dockerfile.obi
+    command: ["--config=/etc/obi.yaml"]
+    privileged: true
+    network_mode: "service:demo-ota"
+    pid: "service:demo-ota"
+    depends_on:
+      demo-ota:
+        condition: service_started
+    environment:
+      INGESTION_KEY: ${INGESTION_KEY:?Set INGESTION_KEY to your Softprobe Explorer Ingestion Key}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-https://explorer.softprobe.ai/api/thelake/v1/traces}
+    volumes:
+      - ./blackbox/obi.yaml:/etc/obi.yaml:ro
+      - /sys/fs/bpf:/sys/fs/bpf
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /sys/kernel/debug:/sys/kernel/debug
+      - /sys/kernel/tracing:/sys/kernel/tracing
