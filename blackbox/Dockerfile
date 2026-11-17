@@ -30,7 +30,8 @@ COPY run-all.sh /run-all.sh
 COPY blackbox/init-vercel-ai.mjs /opt/blackbox/init-vercel-ai.mjs
 COPY blackbox/entrypoint.sh /opt/blackbox/entrypoint.sh
 
-RUN chmod +x /run-all.sh /opt/blackbox/entrypoint.sh
+RUN ln -s /opt/travel-agent-demo/node_modules /opt/blackbox/node_modules \
+    && chmod +x /run-all.sh /opt/blackbox/entrypoint.sh
 
 ENV SPRING_PROFILES_ACTIVE="prod"
 ENV SERVER_PORT="8080"

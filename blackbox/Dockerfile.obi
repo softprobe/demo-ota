@@ -10,7 +10,7 @@ RUN apk add --no-cache ca-certificates curl tar \
        esac \
     && curl -fLO "https://github.com/open-telemetry/opentelemetry-ebpf-instrumentation/releases/download/v${OBI_VERSION}/obi-v${OBI_VERSION}-linux-${OBI_ARCH}.tar.gz" \
     && curl -fLO "https://github.com/open-telemetry/opentelemetry-ebpf-instrumentation/releases/download/v${OBI_VERSION}/SHA256SUMS" \
-    && sha256sum -c SHA256SUMS --ignore-missing \
+    && grep -F "obi-v${OBI_VERSION}-linux-${OBI_ARCH}.tar.gz" SHA256SUMS | sha256sum -c - \
     && tar -xzf "obi-v${OBI_VERSION}-linux-${OBI_ARCH}.tar.gz" \
     && install -m 0755 obi /usr/local/bin/obi \
     && rm -f "obi-v${OBI_VERSION}-linux-${OBI_ARCH}.tar.gz" SHA256SUMS obi
