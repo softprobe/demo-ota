@@ -26,19 +26,74 @@ export OTEL_EXPORTER_OTLP_TRACES_PROTOCOL="http/protobuf"
 export SOFTPROBE_ENVIRONMENT="${ENVIRONMENT_NAME}"
 export SOFTPROBE_AI_SERVICE_NAME="${AI_SERVICE}"
 
-html_attr_json() {
-  local s="$1"
-  s="${s//&/&amp;}"
-  s="${s//\"/&quot;}"
-  s="${s//\'/&#39;}"
-  printf '%s' "${s}"
+js_escape() {
+  awk -v val="$1" 'BEGIN {
+    gsub(/\\/, "\\\\", val);
+    gsub(/"/, "\\\"", val);
+    gsub(/\r/, "", val);
+    gsub(/\n/, "\\n", val);
+    printf "%s", val;
+  }'
 }
 
-RAW_OTA_OPTS="{\"ingestionKey\":\"${INGESTION_KEY}\",\"serviceName\":\"${OTA_WEB_SERVICE}\",\"captureSemanticActions\":true,\"inputCapture\":\"secrets-only\",\"otlp\":{\"tracesEndpoint\":\"${TRACES_ENDPOINT}\",\"protocol\":\"http/protobuf\"},\"resourceAttributes\":{\"deployment.environment.name\":\"${ENVIRONMENT_NAME}\"},\"httpBodyCapture\":{\"routes\":[{\"method\":\"POST\",\"path\":\"/api/flights/*\"}]}}"
-RAW_CHAT_OPTS="{\"ingestionKey\":\"${INGESTION_KEY}\",\"serviceName\":\"${CHAT_WEB_SERVICE}\",\"captureSemanticActions\":true,\"inputCapture\":\"secrets-only\",\"otlp\":{\"tracesEndpoint\":\"${TRACES_ENDPOINT}\",\"protocol\":\"http/protobuf\"},\"resourceAttributes\":{\"deployment.environment.name\":\"${ENVIRONMENT_NAME}\"},\"httpBodyCapture\":{\"routes\":[{\"method\":\"POST\",\"path\":\"/agent/api/sessions\"},{\"method\":\"POST\",\"path\":\"/agent/api/sessions/*/messages\"},{\"method\":\"POST\",\"path\":\"/agent/api/sessions/*/approve\"},{\"method\":\"POST\",\"path\":\"/agent/api/sessions/*/pay\"},{\"method\":\"POST\",\"path\":\"/agent/api/sessions/*/cancel-booking\"},{\"method\":\"POST\",\"path\":\"/agent/api/sessions/*/abort\"}]}}"
+JS_KEY="$(js_escape "${INGESTION_KEY}")"
+JS_ENDPOINT="$(js_escape "${TRACES_ENDPOINT}")"
+JS_ENV="$(js_escape "${ENVIRONMENT_NAME}")"
+JS_OTA_SVC="$(js_escape "${OTA_WEB_SERVICE}")"
+JS_CHAT_SVC="$(js_escape "${CHAT_WEB_SERVICE}")"
 
-ATTR_OTA_OPTS="$(html_attr_json "${RAW_OTA_OPTS}")"
-ATTR_CHAT_OPTS="$(html_attr_json "${RAW_CHAT_OPTS}")"
+mkdir -p /opt/softprobe/web
+
+cat >/opt/softprobe/web/ota-init.js <<EOF_OTA_JS
+if (window.RecordSdk && !window.__softprobeSession) {
+  window.__softprobeSession = window.RecordSdk.init({
+    ingestionKey: "${JS_KEY}",
+    serviceName: "${JS_OTA_SVC}",
+    captureSemanticActions: true,
+    inputCapture: "secrets-only",
+    otlp: {
+      tracesEndpoint: "${JS_ENDPOINT}",
+      protocol: "http/protobuf"
+    },
+    resourceAttributes: {
+      "deployment.environment.name": "${JS_ENV}"
+    },
+    httpBodyCapture: {
+      routes: [
+        { method: "POST", path: "/api/flights/*" }
+      ]
+    }
+  });
+}
+EOF_OTA_JS
+
+cat >/opt/softprobe/web/chat-init.js <<EOF_CHAT_JS
+if (window.RecordSdk && !window.__softprobeSession) {
+  window.__softprobeSession = window.RecordSdk.init({
+    ingestionKey: "${JS_KEY}",
+    serviceName: "${JS_CHAT_SVC}",
+    captureSemanticActions: true,
+    inputCapture: "secrets-only",
+    otlp: {
+      tracesEndpoint: "${JS_ENDPOINT}",
+      protocol: "http/protobuf"
+    },
+    resourceAttributes: {
+      "deployment.environment.name": "${JS_ENV}"
+    },
+    httpBodyCapture: {
+      routes: [
+        { method: "POST", path: "/agent/api/sessions" },
+        { method: "POST", path: "/agent/api/sessions/*/messages" },
+        { method: "POST", path: "/agent/api/sessions/*/approve" },
+        { method: "POST", path: "/agent/api/sessions/*/pay" },
+        { method: "POST", path: "/agent/api/sessions/*/cancel-booking" },
+        { method: "POST", path: "/agent/api/sessions/*/abort" }
+      ]
+    }
+  });
+}
+EOF_CHAT_JS
 
 cat >/etc/nginx/demo-ota.d/blackbox.conf <<'NGINX_COMMON'
 location = /__softprobe/web-record.js {
@@ -46,10 +101,27 @@ location = /__softprobe/web-record.js {
     default_type application/javascript;
     add_header Cache-Control "no-store";
 }
+location = /__softprobe/ota-init.js {
+    alias /opt/softprobe/web/ota-init.js;
+    default_type application/javascript;
+    add_header Cache-Control "no-store";
+}
+location = /__softprobe/chat-init.js {
+    alias /opt/softprobe/web/chat-init.js;
+    default_type application/javascript;
+    add_header Cache-Control "no-store";
+}
 NGINX_COMMON
 
-printf "sub_filter '</head>' '<script src=\"/__softprobe/web-record.js\" data-softprobe-options=\"%s\" defer></script></head>';\nsub_filter_once on;\n" "${ATTR_OTA_OPTS}" >/etc/nginx/demo-ota-web.d/blackbox.conf
-printf "sub_filter '</head>' '<script src=\"/__softprobe/web-record.js\" data-softprobe-options=\"%s\" defer></script></head>';\nsub_filter_once on;\n" "${ATTR_CHAT_OPTS}" >/etc/nginx/demo-ota-chat.d/blackbox.conf
+cat >/etc/nginx/demo-ota-web.d/blackbox.conf <<'NGINX_WEB'
+sub_filter '</head>' '<script src="/__softprobe/web-record.js"></script><script src="/__softprobe/ota-init.js"></script></head>';
+sub_filter_once on;
+NGINX_WEB
+
+cat >/etc/nginx/demo-ota-chat.d/blackbox.conf <<'NGINX_CHAT'
+sub_filter '</head>' '<script src="/__softprobe/web-record.js"></script><script src="/__softprobe/chat-init.js"></script></head>';
+sub_filter_once on;
+NGINX_CHAT
 
 if [[ -f /opt/softprobe/node/init-vercel-ai.mjs ]]; then
   export NODE_OPTIONS="${NODE_OPTIONS:-} --import /opt/softprobe/node/init-vercel-ai.mjs"
