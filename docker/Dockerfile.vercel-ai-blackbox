@@ -1,0 +1,29 @@
+ARG BASE_IMAGE=docker.io/softprobe/demo-ota:vercel-ai
+FROM node:22-bookworm-slim AS node-sdk
+WORKDIR /opt/agent
+COPY agents/vercel-ai/package*.json ./
+RUN npm install --omit=dev --ignore-scripts \
+    && npm install --no-save @ai-sdk/otel @softprobe/web-record@0.2.3 @softprobe/tracing@0.2.3 @softprobe/vercel-ai-sdk@0.2.3
+
+FROM ${BASE_IMAGE}
+ARG OBI_VERSION=1.0.0
+ARG OTEL_JAVA_VERSION=2.14.0
+COPY --from=node-sdk /opt/agent/node_modules /opt/agent/node_modules
+COPY --from=node-sdk /opt/agent/node_modules/@softprobe/web-record/dist/browser.js /opt/softprobe/web/web-record.js
+COPY docker/blackbox/init-vercel-ai.mjs /opt/softprobe/node/init-vercel-ai.mjs
+COPY docker/blackbox/obi.yaml.template /opt/softprobe/obi.yaml.template
+COPY docker/blackbox/10-blackbox.sh /etc/demo-ota/init.d/10-blackbox.sh
+COPY docker/blackbox/20-obi-post-start.sh /etc/demo-ota/post-start.d/20-obi-post-start.sh
+RUN mkdir -p /opt/softprobe/java /tmp/obi-dl \
+    && ln -s /opt/agent/node_modules /opt/softprobe/node/node_modules \
+    && ARCH="$(dpkg --print-architecture)" \
+    && case "${ARCH}" in amd64) OBI_ARCH=amd64 ;; arm64) OBI_ARCH=arm64 ;; *) echo "Unsupported arch: ${ARCH}" >&2; exit 1 ;; esac \
+    && cd /tmp/obi-dl \
+    && curl -fsSLO "https://github.com/open-telemetry/opentelemetry-ebpf-instrumentation/releases/download/v${OBI_VERSION}/obi-v${OBI_VERSION}-linux-${OBI_ARCH}.tar.gz" \
+    && curl -fsSLO "https://github.com/open-telemetry/opentelemetry-ebpf-instrumentation/releases/download/v${OBI_VERSION}/SHA256SUMS" \
+    && grep -F "obi-v${OBI_VERSION}-linux-${OBI_ARCH}.tar.gz" SHA256SUMS | sha256sum -c - \
+    && tar -xzf "obi-v${OBI_VERSION}-linux-${OBI_ARCH}.tar.gz" \
+    && install -m 0755 obi /usr/local/bin/obi \
+    && curl -fsSL "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_JAVA_VERSION}/opentelemetry-javaagent.jar" -o /opt/softprobe/java/opentelemetry-javaagent.jar \
+    && cd / && rm -rf /tmp/obi-dl \
+    && chmod +x /etc/demo-ota/init.d/10-blackbox.sh /etc/demo-ota/post-start.d/20-obi-post-start.sh

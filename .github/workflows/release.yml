@@ -4,27 +4,44 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to publish (for example v2.0.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  publish-base-images:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor:
+          - java
+          - classic
+          - vercel-ai
+          - langgraph-py
+          - google-adk-py
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: maven
-
-      - name: Build JARs
-        run: mvn -B -DskipTests package
+      - name: Resolve version tag
+        id: meta
+        run: |
+          VERSION="${{ inputs.version || github.ref_name }}"
+          FLAVOR="${{ matrix.flavor }}"
+          TAGS="docker.io/softprobe/demo-ota:${FLAVOR},docker.io/softprobe/demo-ota:${VERSION}-${FLAVOR}"
+          if [[ "${FLAVOR}" == "vercel-ai" ]]; then
+            TAGS="${TAGS},docker.io/softprobe/demo-ota:${VERSION},docker.io/softprobe/demo-ota:latest"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -38,21 +55,91 @@ jobs:
           username: ${{ vars.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and publish Docker image
+      - name: Build and push ${{ matrix.flavor }} image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: travel-ota/Dockerfile
+          file: docker/Dockerfile.${{ matrix.flavor }}
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
-          tags: |
-            docker.io/softprobe/demo-ota:${{ github.ref_name }}
-            docker.io/softprobe/demo-ota:latest
+          tags: ${{ steps.meta.outputs.tags }}
 
-      - name: Stage release artifacts
+  publish-blackbox-images:
+    needs: publish-base-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor:
+          - classic
+          - vercel-ai
+          - langgraph-py
+          - google-adk-py
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve blackbox tags
+        id: meta
         run: |
-          cp travel-ota/target/travel-ota-1.0-SNAPSHOT.jar travel-ota.jar
+          VERSION="${{ inputs.version || github.ref_name }}"
+          FLAVOR="${{ matrix.flavor }}"
+          BASE_IMAGE="docker.io/softprobe/demo-ota:${VERSION}-${FLAVOR}"
+          TAGS="docker.io/softprobe/demo-ota:${FLAVOR}-blackbox,docker.io/softprobe/demo-ota:${VERSION}-${FLAVOR}-blackbox"
+          if [[ "${FLAVOR}" == "vercel-ai" ]]; then
+            TAGS="${TAGS},docker.io/softprobe/demo-ota:blackbox,docker.io/softprobe/demo-ota:${VERSION}-blackbox"
+          fi
+          echo "base_image=${BASE_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.flavor }}-blackbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.${{ matrix.flavor }}-blackbox
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            BASE_IMAGE=${{ steps.meta.outputs.base_image }}
+          tags: ${{ steps.meta.outputs.tags }}
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - publish-base-images
+      - publish-blackbox-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build standalone travel-ota JAR
+        run: |
+          mvn -B -DskipTests -pl services/travel-ota -am package
+          cp services/travel-ota/target/travel-ota-1.0-SNAPSHOT.jar travel-ota.jar
           sha256sum travel-ota.jar
 
       - name: Upload GitHub Release

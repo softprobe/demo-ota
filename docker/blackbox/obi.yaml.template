@@ -1,0 +1,77 @@
+file_format: "1.0"
+
+tracer_provider:
+  processors:
+    - batch:
+        exporter:
+          otlp_http:
+            endpoint: "${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT}"
+            encoding: protobuf
+            headers:
+              - name: Authorization
+                value: "Bearer ${INGESTION_KEY}"
+        schedule_delay: 2000
+
+extensions:
+  obi:
+    version: "2.0"
+    capture:
+      policy:
+        default_action: exclude
+      rules:
+        - action: include
+          match:
+            process:
+              language_glob: ["java"]
+              cmd_args_glob:
+                - "*app.jar*"
+      instrumentation:
+        http:
+          enabled:
+            traces: true
+            metrics: false
+          buffer_size: 65536
+          payload_extraction:
+            enabled: [enrichment]
+            enrichment:
+              policy:
+                default_action:
+                  headers: exclude
+                  body: exclude
+                obfuscation_string: "[REDACTED]"
+              rules:
+                - action: obfuscate
+                  type: body
+                  scope: request
+                  match:
+                    url_path_patterns:
+                      - /api/flights/payandissue
+                      - /v1/payments/authorize
+                    methods: [POST]
+                    obfuscation_json_paths:
+                      - $.paymentDetails.cardNumber
+                      - $.paymentDetails.cvv
+                      - $.cardNumber
+                      - $.cvv
+                - action: include
+                  type: body
+                  scope: all
+                  match:
+                    url_path_patterns:
+                      - /api/flights/*
+                      - /api/bookings/*
+                      - /v1/payments/*
+                      - /v1/notifications/*
+                      - /ndc/v21.3/*
+                    methods: [GET, POST]
+        sql:
+          postgres:
+            buffer_size: 65536
+          mysql:
+            buffer_size: 0
+      runtimes:
+        java:
+          enabled: true
+      engine:
+        propagation:
+          context_propagation: headers
