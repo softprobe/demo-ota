@@ -1,0 +1,60 @@
+server:
+  port: ${OTA_BACKEND_PORT:8080}
+  servlet:
+    context-path: /
+  address: 0.0.0.0
+
+spring:
+  application:
+    name: travel-ota
+
+  web:
+    resources:
+      static-locations: file:/opt/ota-web/,classpath:/static/
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: NON_NULL
+
+logging:
+  level:
+    org.example: DEBUG
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# RegionTenantCodeConfig demo (@Value setter -> static field -> inner enum snapshot).
+# Change tenant.sales-region (MEA=8% tax, EU=20% tax) at replay time to expose stale static/enum bugs.
+tenant:
+  MEA: tenant-mea-local
+  EU: tenant-eu-local
+  sales-region: MEA
+
+app:
+  mock:
+    search-delay: 500
+    booking-delay: 1000
+    payment-delay: 1500
+
+  airline:
+    base-url: ${AIRLINE_NDC_BASE_URL:https://spair.softprobe.ai/ndc/v21.3}
+    connection-timeout: 5000
+    read-timeout: 10000
+
+  payment:
+    base-url: ${PAYMENT_SANDBOX_BASE_URL:http://127.0.0.1:8082}
+
+  notification:
+    base-url: ${NOTIFICATION_SANDBOX_BASE_URL:http://127.0.0.1:8083}
+
+  fault:
+    skip-email: ${OTA_FAULT_SKIP_EMAIL:false}
+
+  downstream:
+    enabled: ${OTA_DOWNSTREAM_ENABLED:true}

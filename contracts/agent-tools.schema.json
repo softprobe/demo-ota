@@ -1,0 +1,58 @@
+{
+  "tools": [
+    {
+      "name": "travel_search",
+      "description": "Find real mock flight options for a one-way economy trip, one adult. Returns exact offerId values and does not reserve.",
+      "backendEndpoint": "/api/bookings/sessions/{sessionId}/tools/search",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["origin", "destination", "date"],
+        "properties": {
+          "origin": { "type": "string", "minLength": 3, "maxLength": 3 },
+          "destination": { "type": "string", "minLength": 3, "maxLength": 3 },
+          "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+        }
+      }
+    },
+    {
+      "name": "travel_prepare",
+      "description": "Prepare a review from a returned offerId and traveler name. This does not book. The traveler must confirm it in the browser. Above $1,000 USD manager approval is separate.",
+      "backendEndpoint": "/api/bookings/sessions/{sessionId}/tools/prepare",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["offerId", "firstName", "lastName"],
+        "properties": {
+          "offerId": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "firstName": { "type": "string", "minLength": 1, "maxLength": 10 },
+          "lastName": { "type": "string", "minLength": 1, "maxLength": 10 }
+        }
+      }
+    },
+    {
+      "name": "travel_book",
+      "description": "Submit exactly one prepared booking only after the gateway sends its exact browser-confirmed requestId. Payment remains pending; no ticket is issued. Never retry an uncertain result.",
+      "backendEndpoint": "/api/bookings/sessions/{sessionId}/tools/book",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" }
+        }
+      }
+    },
+    {
+      "name": "travel_order",
+      "description": "Read back this conversation's existing known reservation. This cannot create a booking or make a payment.",
+      "backendEndpoint": "/api/bookings/sessions/{sessionId}/tools/order",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      }
+    }
+  ]
+}
