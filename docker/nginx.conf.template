@@ -1,0 +1,77 @@
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log warn;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    tcp_nopush on;
+    keepalive_timeout 65;
+    underscores_in_headers on;
+    client_max_body_size 10m;
+    access_log /var/log/nginx/access.log;
+
+    server {
+        listen ${LISTEN_PORT};
+        server_name _;
+
+        proxy_http_version 1.1;
+        proxy_pass_request_headers on;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        include /etc/nginx/demo-ota.d/*.conf;
+
+        location = /healthz {
+            access_log off;
+            default_type application/json;
+            return 200 '{"ok":true}';
+        }
+
+        location /api/ {
+            proxy_pass http://127.0.0.1:8081;
+            proxy_read_timeout 60s;
+        }
+
+        location /__sandbox/ {
+            proxy_pass http://127.0.0.1:8082;
+            proxy_read_timeout 15s;
+        }
+
+        location /agent/api/ {
+            proxy_pass http://127.0.0.1:4311;
+            proxy_read_timeout 240s;
+            proxy_buffering off;
+        }
+
+        location = /agent {
+            alias /opt/chat-web/index.html;
+            default_type text/html;
+            add_header Cache-Control "no-store";
+            include /etc/nginx/demo-ota-chat.d/*.conf;
+        }
+
+        location /agent/ {
+            alias /opt/chat-web/;
+            index index.html;
+            try_files $uri $uri/ /agent/index.html =404;
+            add_header Cache-Control "no-store";
+            include /etc/nginx/demo-ota-chat.d/*.conf;
+        }
+
+        location / {
+            root /opt/ota-web;
+            index index.html;
+            try_files $uri $uri/ =404;
+            add_header Cache-Control "no-store";
+            include /etc/nginx/demo-ota-web.d/*.conf;
+        }
+    }
+}

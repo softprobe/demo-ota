@@ -1,0 +1,12 @@
+[project]
+name = "demo-ota-agent-google-adk-py"
+version = "2.0.0"
+description = "Stateless Google ADK travel reservation agent for demo-ota"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn>=0.32.0",
+  "httpx>=0.27.0",
+  "google-adk>=1.0.0",
+  "litellm>=1.60.0",
+]

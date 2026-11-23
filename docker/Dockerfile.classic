@@ -1,0 +1,40 @@
+FROM maven:3.9-eclipse-temurin-21 AS ota-build
+WORKDIR /workspace
+COPY pom.xml ./pom.xml
+COPY services/travel-ota/pom.xml ./services/travel-ota/pom.xml
+COPY services/travel-ota/src ./services/travel-ota/src
+RUN mvn -B -DskipTests -pl services/travel-ota -am package
+
+FROM golang:1.23-bookworm AS sandbox-build
+WORKDIR /src
+COPY services/ota-sandbox ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ota-sandbox .
+
+FROM eclipse-temurin:21-jre-noble
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+       ca-certificates curl nginx postgresql \
+    && rm -rf /var/lib/apt/lists/* \
+    && PG_BIN="$(echo /usr/lib/postgresql/*/bin | awk '{print $1}')" \
+    && mkdir -p /var/lib/postgresql/ota-seed /var/run/postgresql \
+    && chown -R postgres:postgres /var/lib/postgresql /var/run/postgresql \
+    && su - postgres -c "${PG_BIN}/initdb -D /var/lib/postgresql/ota-seed --auth-local=trust --auth-host=trust --encoding=UTF8 --locale=C" \
+    && printf "listen_addresses = '127.0.0.1'\nport = 5432\nfsync = off\nsynchronous_commit = off\nfull_page_writes = off\n" >> /var/lib/postgresql/ota-seed/postgresql.conf \
+    && su - postgres -c "${PG_BIN}/pg_ctl -D /var/lib/postgresql/ota-seed -w start && ${PG_BIN}/createdb -h 127.0.0.1 ota && ${PG_BIN}/pg_ctl -D /var/lib/postgresql/ota-seed -m fast -w stop"
+
+COPY --from=ota-build /workspace/services/travel-ota/target/travel-ota-1.0-SNAPSHOT.jar /app.jar
+COPY --from=sandbox-build /out/ota-sandbox /usr/local/bin/ota-sandbox
+COPY contracts /opt/contracts
+COPY apps/ota-web /opt/ota-web
+COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN mkdir -p /opt/chat-web && chmod +x /entrypoint.sh /usr/local/bin/ota-sandbox
+
+ENV SPRING_PROFILES_ACTIVE="prod"
+ENV PORT="8080"
+ENV SERVER_PORT="8081"
+ENV TRAVEL_OTA_BASE_URL="http://127.0.0.1:8081"
+ENV AIRLINE_NDC_BASE_URL="https://spair.softprobe.ai/ndc/v21.3"
+ENV CONTRACTS_DIR="/opt/contracts"
+EXPOSE 8080
+ENTRYPOINT ["/entrypoint.sh"]

@@ -4,17 +4,7 @@ on:
   push:
     branches:
       - '**'
-    paths:
-      - 'travel-ota/**'
-      - 'pom.xml'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/release.yml'
   pull_request:
-    paths:
-      - 'travel-ota/**'
-      - 'pom.xml'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/release.yml'
 
 permissions:
   contents: read
@@ -24,12 +14,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check uninstrumented app sources and zero Compose files
+        run: node tests/check-uninstrumented-source.mjs
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Test Go downstream sandbox
+        working-directory: services/ota-sandbox
+        run: go test -v ./...
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -38,5 +45,17 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Build Maven modules
-        run: mvn -B -DskipTests install
+      - name: Test Java backend
+        run: mvn -B test
+
+      - name: Set up uv and Python 3.12
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Node agent dependencies
+        working-directory: agents/vercel-ai
+        run: npm install --no-audit --no-fund
+
+      - name: Run polyglot agent conformance suite
+        run: node tests/agent-conformance/run-conformance.mjs
